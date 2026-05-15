@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wan Shi Tong's Library</title>
+<meta name="theme-color" content="#1c130a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== Nation insignia (hidden SVG defs) ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="sym-fire" viewBox="0 0 100 100">
+    <path d="M50 8 C64 32 82 40 72 64 C67 76 58 82 50 94 C42 82 33 76 28 64 C18 40 36 32 50 8Z"/>
+    <path d="M50 40 C57 52 65 56 60 68 C57 75 53 78 50 86 C47 78 43 75 40 68 C35 56 43 52 50 40Z" fill="#1c130a" opacity="0.35"/>
+  </symbol>
+  <symbol id="sym-air" viewBox="0 0 100 100">
+    <path d="M50 9 A41 41 0 1 1 9 50" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+    <path d="M50 27 A23 23 0 1 1 27 50" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="9"/>
+  </symbol>
+  <symbol id="sym-water" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="7"/>
+    <path d="M64 20 A33 33 0 1 0 64 80 A27 27 0 1 1 64 20Z"/>
+    <circle cx="58" cy="34" r="5" fill="#1c130a" opacity="0.4"/>
+  </symbol>
+  <symbol id="sym-earth" viewBox="0 0 100 100">
+    <rect x="17" y="17" width="66" height="66" rx="4" fill="none" stroke="currentColor" stroke-width="8"/>
+    <circle cx="50" cy="50" r="19"/>
+  </symbol>
+</svg>
+
+<!-- ===== Setup overlay ===== -->
+<div id="setup" class="overlay hidden">
+  <div class="scroll-panel">
+    <h2>Enter the Library</h2>
+    <p class="muted">Wan Shi Tong asks two keys of every visitor. They are stored only on this device.</p>
+
+    <label>TMDB API Key
+      <span class="hint">themoviedb.org &rarr; Settings &rarr; API &rarr; Developer key (v3 auth)</span>
+      <input id="in-tmdb" type="text" autocomplete="off" spellcheck="false" placeholder="your TMDB v3 API key">
+    </label>
+
+    <label>GitHub Token <span class="hint">classic token with the <b>gist</b> scope only &mdash; powers cross-device sync</span>
+      <input id="in-token" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_...">
+    </label>
+
+    <label>Existing Library ID <span class="hint">optional &mdash; paste the Gist ID from another device to sync. Leave blank to start fresh.</span>
+      <input id="in-gist" type="text" autocomplete="off" spellcheck="false" placeholder="(leave blank on first device)">
+    </label>
+
+    <div id="setup-msg" class="msg"></div>
+    <button id="btn-setup" class="btn btn-fire">Open the Library</button>
+  </div>
+</div>
+
+<!-- ===== Settings modal ===== -->
+<div id="settings" class="overlay hidden">
+  <div class="scroll-panel">
+    <h2>Library Settings</h2>
+    <label>Your Library ID <span class="hint">paste this on another device to sync your shows</span>
+      <input id="set-gist" type="text" readonly>
+    </label>
+    <label>TMDB API Key
+      <input id="set-tmdb" type="text" autocomplete="off" spellcheck="false">
+    </label>
+    <label>GitHub Token (gist scope)
+      <input id="set-token" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <div id="settings-msg" class="msg"></div>
+    <div class="row">
+      <button id="btn-save-settings" class="btn btn-earth">Save</button>
+      <button id="btn-pull" class="btn btn-water">Sync Now</button>
+      <button id="btn-close-settings" class="btn btn-ghost">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Header ===== -->
+<header>
+  <div class="title-block">
+    <h1>Wan Shi Tong's Library</h1>
+    <p class="tagline">He Who Knows 10,000 Shows</p>
+  </div>
+  <div class="header-tools">
+    <span id="sync-status" class="sync-status" title="Sync status">&bull;</span>
+    <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">&#9881;</button>
+  </div>
+</header>
+
+<!-- ===== Search ===== -->
+<div class="search-wrap">
+  <input id="search" type="text" placeholder="Search any show to add to your scrolls&hellip;" autocomplete="off">
+  <div id="results" class="results hidden"></div>
+</div>
+
+<!-- ===== Shelves ===== -->
+<main id="shelves">
+  <section class="shelf" data-status="watching">
+    <h2><svg class="insignia"><use href="#sym-fire"/></svg> Now Watching</h2>
+    <div class="cards" id="lane-watching"></div>
+  </section>
+  <section class="shelf" data-status="plan">
+    <h2><svg class="insignia"><use href="#sym-air"/></svg> Scrolls to Unroll</h2>
+    <div class="cards" id="lane-plan"></div>
+  </section>
+  <section class="shelf" data-status="hold">
+    <h2><svg class="insignia"><use href="#sym-water"/></svg> Frozen in Time</h2>
+    <div class="cards" id="lane-hold"></div>
+  </section>
+  <section class="shelf" data-status="completed">
+    <h2><svg class="insignia"><use href="#sym-earth"/></svg> Mastered</h2>
+    <div class="cards" id="lane-completed"></div>
+  </section>
+</main>
+
+<footer>
+  <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
