@@ -129,17 +129,33 @@ function watchedCount(show) {
   }
   return c;
 }
+function episodeText(show) {
+  const next = upNext(show);
+  const total = totalEpisodes(show);
+  if (show.currentEpisode === 0 && next)
+    return { line: 'Not started',
+      name: 'Up next: S' + next.season + ' · E' + next.ep + (next.name ? ' — ' + next.name : '') };
+  if (next)
+    return { line: 'Watched: S' + show.currentSeason + ' · E' + show.currentEpisode,
+      name: 'Up next: S' + next.season + ' · E' + next.ep + (next.name ? ' — ' + next.name : '') };
+  return { line: 'Series complete', name: 'All ' + total + ' episodes watched' };
+}
 function markWatched(show) {
   const n = upNext(show);
   if (!n) return;
+  const wasStatus = show.status;
+  const wasFirst = watchedCount(show) === 0;
   show.currentSeason = n.season;
   show.currentEpisode = n.ep;
   show.updatedAt = new Date().toISOString();
   if (!upNext(show)) show.status = 'completed';
   else if (show.status === 'completed') show.status = 'watching';
-  saveState(); render();
+  saveState();
+  if (show.status !== wasStatus || wasFirst) render();
+  else updateCardInPlace(show);
 }
 function stepBack(show) {
+  const wasStatus = show.status;
   if (show.currentEpisode > 0) {
     show.currentEpisode--;
   } else {
@@ -150,7 +166,9 @@ function stepBack(show) {
   }
   if (show.status === 'completed') show.status = 'watching';
   show.updatedAt = new Date().toISOString();
-  saveState(); render();
+  saveState();
+  if (show.status !== wasStatus || watchedCount(show) === 0) render();
+  else updateCardInPlace(show);
 }
 
 /* ---------- mutations ---------- */
@@ -217,31 +235,23 @@ function render() {
       lane.appendChild(d);
       continue;
     }
-    shows.forEach(show => lane.appendChild(renderCard(show)));
+    shows.forEach((show, i) => lane.appendChild(renderCard(show, i)));
   }
 }
 
-function renderCard(show) {
+function renderCard(show, idx) {
   const el = ELEMENT[show.status];
   const card = document.createElement('div');
   card.className = 'card el-' + el + (show.status === 'completed' ? ' done' : '');
+  card.dataset.id = show.tmdbId;
+  card.style.animationDelay = ((idx || 0) * 0.05) + 's';
 
   const next = upNext(show);
   const total = totalEpisodes(show);
   const done = watchedCount(show);
   const pct = total ? Math.round(done / total * 100) : 0;
-
-  let epLine, epName;
-  if (show.currentEpisode === 0 && next) {
-    epLine = 'Not started';
-    epName = 'Up next: S' + next.season + ' · E' + next.ep + (next.name ? ' — ' + next.name : '');
-  } else if (next) {
-    epLine = 'Watched: S' + show.currentSeason + ' · E' + show.currentEpisode;
-    epName = 'Up next: S' + next.season + ' · E' + next.ep + (next.name ? ' — ' + next.name : '');
-  } else {
-    epLine = 'Series complete';
-    epName = 'All ' + total + ' episodes watched';
-  }
+  const et = episodeText(show);
+  const epLine = et.line, epName = et.name;
 
   const poster = show.poster
     ? `<img class="poster" src="${show.poster}" alt="" loading="lazy">`
@@ -263,13 +273,13 @@ function renderCard(show) {
   if (next) {
     const nb = mkBtn('▶ Watched This', 'btn btn-' +
       ({ fire: 'fire', air: 'air', water: 'water', earth: 'earth' }[el]) + ' next-btn');
-    nb.onclick = () => markWatched(show);
+    nb.onclick = () => { bendPress(nb); markWatched(show); };
     actions.appendChild(nb);
   }
   if (done > 0) {
     const back = mkBtn('◀', 'mini');
     back.title = 'Step back one episode';
-    back.onclick = () => stepBack(show);
+    back.onclick = () => { bendPress(back); stepBack(show); };
     actions.appendChild(back);
   }
 
@@ -311,6 +321,37 @@ function mkBtn(label, cls) {
 function esc(s) {
   return String(s).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* in-place card update — animates progress without a full re-render */
+function updateCardInPlace(show) {
+  const card = document.querySelector('.card[data-id="' + show.tmdbId + '"]');
+  if (!card) { render(); return; }
+  const t = episodeText(show);
+  const total = totalEpisodes(show);
+  const done = watchedCount(show);
+  const pct = total ? Math.round(done / total * 100) : 0;
+  card.querySelector('.ep-line').textContent = t.line;
+  card.querySelector('.ep-name').textContent = t.name;
+  card.querySelector('.progress > i').style.width = pct + '%';
+  card.querySelector('.count').textContent = done + ' / ' + total + ' episodes';
+  animatePop(card);
+}
+function animatePop(card) {
+  card.animate(
+    [ { transform: 'scale(1)',    boxShadow: '0 4px 12px rgba(50,30,5,0.22)' },
+      { transform: 'scale(1.035)', boxShadow: '0 0 28px rgba(230,126,34,0.75)', offset: 0.35 },
+      { transform: 'scale(1)',    boxShadow: '0 4px 12px rgba(50,30,5,0.22)' } ],
+    { duration: 480, easing: 'ease-out' }
+  );
+}
+function bendPress(btn) {
+  btn.animate(
+    [ { transform: 'scale(1)',    filter: 'brightness(1)' },
+      { transform: 'scale(1.14)', filter: 'brightness(1.45)', offset: 0.4 },
+      { transform: 'scale(1)',    filter: 'brightness(1)' } ],
+    { duration: 330, easing: 'cubic-bezier(0.34,1.56,0.64,1)' }
+  );
 }
 
 /* ---------- search UI ---------- */

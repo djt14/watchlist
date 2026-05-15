@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"    stop-color="#1f2f5c"/>
+      <stop offset="0.34" stop-color="#5b3f72"/>
+      <stop offset="0.55" stop-color="#b65f3f"/>
+      <stop offset="0.74" stop-color="#e49a4c"/>
+      <stop offset="1"    stop-color="#f6d79e"/>
+    </linearGradient>
+    <radialGradient id="sunglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0"   stop-color="#fff5d6"/>
+      <stop offset="0.4" stop-color="#ffd98f" stop-opacity="0.9"/>
+      <stop offset="1"   stop-color="#ffd98f" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+
+  <!-- sun -->
+  <circle cx="1130" cy="560" r="290" fill="url(#sunglow)"/>
+  <circle cx="1130" cy="560" r="86" fill="#fff4cf"/>
+
+  <!-- birds -->
+  <g stroke="#2c2236" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.7">
+    <path d="M300 230 q16 -13 32 0 q16 -13 32 0"/>
+    <path d="M372 270 q12 -10 24 0 q12 -10 24 0"/>
+    <path d="M250 300 q12 -10 24 0 q12 -10 24 0"/>
+  </g>
+
+  <!-- far mountains -->
+  <path d="M0 640 L240 470 L430 580 L660 430 L900 560 L1180 420 L1420 540 L1600 470 L1600 1000 L0 1000Z"
+        fill="#9c6650" opacity="0.5"/>
+
+  <!-- mid mountains -->
+  <path d="M0 740 L300 560 L560 690 L820 520 L1080 670 L1340 560 L1600 660 L1600 1000 L0 1000Z"
+        fill="#7a4338" opacity="0.85"/>
+
+  <!-- air temple spires on the mid peak (~x820,y520) -->
+  <g fill="#4a2c2a">
+    <g transform="translate(786 520)">
+      <path d="M-13 0 L-6 -86 L0 -116 L6 -86 L13 0 Z"/>
+      <circle cx="0" cy="-124" r="7"/>
+    </g>
+    <g transform="translate(822 520)">
+      <path d="M-17 0 L-8 -120 L0 -158 L8 -120 L17 0 Z"/>
+      <circle cx="0" cy="-168" r="9"/>
+    </g>
+    <g transform="translate(860 520)">
+      <path d="M-13 0 L-6 -78 L0 -106 L6 -78 L13 0 Z"/>
+      <circle cx="0" cy="-114" r="7"/>
+    </g>
+  </g>
+
+  <!-- near ridge -->
+  <path d="M0 838 L340 740 L680 820 L1010 720 L1320 824 L1600 760 L1600 1000 L0 1000Z"
+        fill="#2f211f"/>
+
+  <!-- low mist -->
+  <path d="M0 860 Q400 820 800 862 T1600 858 L1600 1000 L0 1000Z" fill="#f6d79e" opacity="0.18"/>
+</svg>

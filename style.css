@@ -19,20 +19,37 @@ body {
   font-family: 'Spectral', Georgia, serif;
   color: var(--ink);
   min-height: 100vh;
-  padding: 0 0 3rem;
-  background:
-    radial-gradient(circle at 20% 15%, rgba(192,57,43,0.07), transparent 45%),
-    radial-gradient(circle at 85% 80%, rgba(41,128,185,0.07), transparent 45%),
-    radial-gradient(circle at 50% 50%, #f6e8c6, #e7d3a4 75%, #d8bf86);
-  background-attachment: fixed;
+  background: #15101f;
 }
 
-/* parchment grain */
-body::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; opacity: 0.5;
+/* scenic ATLA backdrop */
+#scene {
+  position: fixed; inset: 0; z-index: -2;
+  background: url(scene.svg) center/cover no-repeat;
+}
+#scene::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 38%, transparent 52%, rgba(10,6,16,0.6));
+}
+
+/* parchment page panel laid over the vista */
+.page {
+  position: relative; z-index: 0;
+  max-width: 1040px; margin: 0 auto; min-height: 100vh;
+  padding-bottom: 3rem;
+  background: rgba(238,223,188,0.955);
+  box-shadow: 0 0 90px rgba(0,0,0,0.6);
+  animation: unroll 0.7s ease both;
+}
+.page::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0.5;
   background-image:
     repeating-linear-gradient(0deg, rgba(120,90,40,0.04) 0 2px, transparent 2px 4px),
     repeating-linear-gradient(90deg, rgba(120,90,40,0.03) 0 3px, transparent 3px 6px);
+}
+@keyframes unroll {
+  from { opacity: 0; transform: translateY(-14px); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* ===== Header ===== */
@@ -131,6 +148,13 @@ main { max-width: 1100px; margin: 1.5rem auto 0; padding: 0 clamp(0.75rem, 3vw, 
   border: 2px solid var(--edge); border-radius: 12px;
   padding: 0.8rem; position: relative;
   box-shadow: 0 4px 12px rgba(50,30,5,0.22);
+  animation: rise 0.42s cubic-bezier(0.22,1,0.36,1) both;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.card:hover { box-shadow: 0 8px 22px rgba(50,30,5,0.34); transform: translateY(-2px); }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
 }
 .card.el-fire  { border-left: 7px solid var(--fire); }
 .card.el-air   { border-left: 7px solid var(--air); }
@@ -154,7 +178,10 @@ main { max-width: 1100px; margin: 1.5rem auto 0; padding: 0 clamp(0.75rem, 3vw, 
   height: 8px; border-radius: 4px; margin: 0.5rem 0 0.55rem;
   background: rgba(90,60,20,0.22); overflow: hidden;
 }
-.progress > i { display: block; height: 100%; border-radius: 4px; }
+.progress > i {
+  display: block; height: 100%; border-radius: 4px;
+  transition: width 0.65s cubic-bezier(0.22,1,0.36,1);
+}
 .el-fire  .progress > i { background: linear-gradient(90deg, var(--fire), var(--fire-glow)); }
 .el-air   .progress > i { background: linear-gradient(90deg, var(--air), var(--air-glow)); }
 .el-water .progress > i { background: linear-gradient(90deg, var(--water), var(--water-glow)); }
@@ -168,10 +195,10 @@ main { max-width: 1100px; margin: 1.5rem auto 0; padding: 0 clamp(0.75rem, 3vw, 
   font-family: 'Cinzel', serif; font-weight: 700;
   cursor: pointer; border: none; border-radius: 8px;
   padding: 0.55rem 0.9rem; font-size: 0.85rem; color: #fff;
-  transition: transform 0.12s, filter 0.12s;
+  transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), filter 0.15s, box-shadow 0.15s;
 }
-.btn:hover { filter: brightness(1.1); }
-.btn:active { transform: scale(0.96); }
+.btn:hover { filter: brightness(1.12); box-shadow: 0 4px 16px rgba(0,0,0,0.32); }
+.btn:active { transform: scale(0.91); }
 .btn-fire  { background: linear-gradient(150deg, var(--fire), var(--fire-glow)); }
 .btn-air   { background: linear-gradient(150deg, #b07d12, var(--air)); }
 .btn-water { background: linear-gradient(150deg, var(--water), var(--water-glow)); }
@@ -183,8 +210,10 @@ main { max-width: 1100px; margin: 1.5rem auto 0; padding: 0 clamp(0.75rem, 3vw, 
   background: var(--parch); color: var(--ink);
   border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.8rem;
   font-family: 'Spectral', serif;
+  transition: transform 0.13s cubic-bezier(0.34,1.56,0.64,1), background 0.13s;
 }
 .mini:hover { background: var(--parch-dk); }
+.mini:active { transform: scale(0.88); }
 .next-btn { flex: 1 1 auto; min-width: 130px; }
 .card.done .next-btn { background: linear-gradient(150deg, var(--earth), var(--earth-glow)); }
 

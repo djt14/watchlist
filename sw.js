@@ -1,6 +1,6 @@
 /* Wan Shi Tong's Library — minimal offline shell cache */
-const CACHE = 'wstl-v1';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg'];
+const CACHE = 'wstl-v2';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg', 'scene.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
