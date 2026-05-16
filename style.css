@@ -1,6 +1,7 @@
 /* ===== Wan Shi Tong's Library — ATLA-themed watchlist ===== */
 
 :root {
+  color-scheme: only light;
   --fire:   #c0392b;  --fire-glow:  #e67e22;
   --air:    #e0a93b;  --air-glow:   #f5d76e;
   --water:  #2980b9;  --water-glow: #5dade2;
