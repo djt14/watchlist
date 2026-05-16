@@ -1,5 +1,5 @@
-/* Wan Shi Tong's Library — minimal offline shell cache */
-const CACHE = 'wstl-v2';
+/* Wan Shi Tong's Library — service worker (network-first, offline fallback) */
+const CACHE = 'wstl-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg', 'scene.svg'];
 
 self.addEventListener('install', e => {
@@ -8,16 +8,24 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // never cache API traffic — always hit the network
+  // never touch API traffic
   if (url.hostname.includes('themoviedb.org') || url.hostname.includes('github.com')) return;
+  // network-first: always try fresh, fall back to cache when offline
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).catch(() => caches.match('index.html')))
+    fetch(e.request)
+      .then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(e.request).then(hit => hit || caches.match('index.html')))
   );
 });
