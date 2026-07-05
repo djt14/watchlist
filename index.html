@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wan Shi Tong's Library</title>
-<meta name="theme-color" content="#1c130a">
-<meta name="color-scheme" content="light only">
+<meta name="theme-color" content="#0b0e14">
+<meta name="color-scheme" content="dark">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,7 +20,7 @@
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="sym-fire" viewBox="0 0 100 100">
     <path d="M50 8 C64 32 82 40 72 64 C67 76 58 82 50 94 C42 82 33 76 28 64 C18 40 36 32 50 8Z"/>
-    <path d="M50 40 C57 52 65 56 60 68 C57 75 53 78 50 86 C47 78 43 75 40 68 C35 56 43 52 50 40Z" fill="#1c130a" opacity="0.35"/>
+    <path d="M50 40 C57 52 65 56 60 68 C57 75 53 78 50 86 C47 78 43 75 40 68 C35 56 43 52 50 40Z" fill="#0b0e14" opacity="0.35"/>
   </symbol>
   <symbol id="sym-air" viewBox="0 0 100 100">
     <path d="M50 9 A41 41 0 1 1 9 50" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
@@ -30,7 +30,7 @@
   <symbol id="sym-water" viewBox="0 0 100 100">
     <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" stroke-width="7"/>
     <path d="M64 20 A33 33 0 1 0 64 80 A27 27 0 1 1 64 20Z"/>
-    <circle cx="58" cy="34" r="5" fill="#1c130a" opacity="0.4"/>
+    <circle cx="58" cy="34" r="5" fill="#0b0e14" opacity="0.4"/>
   </symbol>
   <symbol id="sym-earth" viewBox="0 0 100 100">
     <rect x="17" y="17" width="66" height="66" rx="4" fill="none" stroke="currentColor" stroke-width="8"/>
@@ -38,9 +38,23 @@
   </symbol>
 </svg>
 
+<!-- ===== Animated backgrounds ===== -->
+<div id="bg-aurora" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="blob b4"></div>
+  <canvas id="spirits"></canvas>
+</div>
+<div id="bg-backdrops" class="hidden" aria-hidden="true">
+  <div class="bd-layer" id="bd-a"></div>
+  <div class="bd-layer" id="bd-b"></div>
+</div>
+<div id="bg-scrim" aria-hidden="true"></div>
+
 <!-- ===== Setup overlay ===== -->
 <div id="setup" class="overlay hidden">
-  <div class="scroll-panel">
+  <div class="panel">
     <h2>Enter the Library</h2>
     <p class="muted">Wan Shi Tong asks two keys of every visitor. They are stored only on this device.</p>
 
@@ -64,7 +78,7 @@
 
 <!-- ===== Settings modal ===== -->
 <div id="settings" class="overlay hidden">
-  <div class="scroll-panel">
+  <div class="panel">
     <h2>Library Settings</h2>
     <label>Your Library ID <span class="hint">paste this on another device to sync your shows</span>
       <input id="set-gist" type="text" readonly>
@@ -75,6 +89,19 @@
     <label>GitHub Token (gist scope)
       <input id="set-token" type="password" autocomplete="off" spellcheck="false">
     </label>
+
+    <fieldset class="bg-picker">
+      <legend>Background</legend>
+      <label class="radio">
+        <input type="radio" name="bg" value="aurora">
+        <span><b>Spirit-world aurora</b><span class="hint">drifting lights of the Spirit World</span></span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="bg" value="backdrops">
+        <span><b>My library</b><span class="hint">slow slideshow of scenes from your own shows</span></span>
+      </label>
+    </fieldset>
+
     <div id="settings-msg" class="msg"></div>
     <div class="row">
       <button id="btn-save-settings" class="btn btn-earth">Save</button>
@@ -84,55 +111,84 @@
   </div>
 </div>
 
-<!-- ===== Scenic backdrop ===== -->
-<div id="scene" aria-hidden="true"></div>
+<!-- ===== Stats modal ===== -->
+<div id="stats" class="overlay hidden">
+  <div class="panel">
+    <h2>Wan Shi Tong's Records</h2>
+    <div id="stats-content"></div>
+    <div class="row"><button id="btn-close-stats" class="btn btn-ghost">Close</button></div>
+  </div>
+</div>
 
-<!-- ===== Parchment page ===== -->
-<div class="page">
+<!-- ===== Show detail modal ===== -->
+<div id="detail" class="overlay hidden">
+  <div class="detail-panel">
+    <button id="btn-close-detail" class="detail-close" aria-label="Close">&#10005;</button>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<!-- ===== Toasts ===== -->
+<div id="toasts" aria-live="polite"></div>
 
 <!-- ===== Header ===== -->
-<header>
-  <div class="title-block">
+<header id="topbar">
+  <div class="brand">
     <h1>Wan Shi Tong's Library</h1>
-    <p class="tagline">He Who Knows 10,000 Shows</p>
+    <span class="tagline">He Who Knows 10,000 Shows</span>
   </div>
   <div class="header-tools">
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="Search shows&hellip;" autocomplete="off" aria-label="Search shows">
+      <div id="results" class="results hidden"></div>
+    </div>
+    <button id="btn-stats" class="icon-btn" title="Wan Shi Tong's Records" aria-label="Statistics">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
+    </button>
     <span id="sync-status" class="sync-status" title="Sync status">&bull;</span>
     <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">&#9881;</button>
   </div>
 </header>
 
-<!-- ===== Search ===== -->
-<div class="search-wrap">
-  <input id="search" type="text" placeholder="Search any show to add to your scrolls&hellip;" autocomplete="off">
-  <div id="results" class="results hidden"></div>
-</div>
-
 <!-- ===== Shelves ===== -->
 <main id="shelves">
   <section class="shelf" data-status="watching">
-    <h2><svg class="insignia"><use href="#sym-fire"/></svg> Now Watching</h2>
-    <div class="cards" id="lane-watching"></div>
+    <h2><svg class="insignia"><use href="#sym-fire"/></svg> Now Watching <span class="chip" id="chip-watching"></span></h2>
+    <div class="row-wrap">
+      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
+      <div class="cards" id="lane-watching"></div>
+      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
+    </div>
   </section>
   <section class="shelf" data-status="plan">
-    <h2><svg class="insignia"><use href="#sym-air"/></svg> Scrolls to Unroll</h2>
-    <div class="cards" id="lane-plan"></div>
+    <h2><svg class="insignia"><use href="#sym-air"/></svg> Scrolls to Unroll <span class="chip" id="chip-plan"></span></h2>
+    <div class="row-wrap">
+      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
+      <div class="cards" id="lane-plan"></div>
+      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
+    </div>
   </section>
   <section class="shelf" data-status="hold">
-    <h2><svg class="insignia"><use href="#sym-water"/></svg> Frozen in Time</h2>
-    <div class="cards" id="lane-hold"></div>
+    <h2><svg class="insignia"><use href="#sym-water"/></svg> Frozen in Time <span class="chip" id="chip-hold"></span></h2>
+    <div class="row-wrap">
+      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
+      <div class="cards" id="lane-hold"></div>
+      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
+    </div>
   </section>
   <section class="shelf" data-status="completed">
-    <h2><svg class="insignia"><use href="#sym-earth"/></svg> Mastered</h2>
-    <div class="cards" id="lane-completed"></div>
+    <h2><svg class="insignia"><use href="#sym-earth"/></svg> Mastered <span class="chip" id="chip-completed"></span></h2>
+    <div class="row-wrap">
+      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
+      <div class="cards" id="lane-completed"></div>
+      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
+    </div>
   </section>
 </main>
 
 <footer>
   <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
 </footer>
-
-</div><!-- /.page -->
 
 <script src="app.js"></script>
 </body>
