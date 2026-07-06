@@ -1,5 +1,5 @@
 /* Wan Shi Tong's Library — service worker (network-first, offline fallback) */
-const CACHE = 'wstl-v5';
+const CACHE = 'wstl-v6';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg',
   'assets/spirit-scene-far.svg', 'assets/spirit-scene-near.svg'];
 

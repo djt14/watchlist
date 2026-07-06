@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -36,17 +36,6 @@
     <rect x="17" y="17" width="66" height="66" rx="4" fill="none" stroke="currentColor" stroke-width="8"/>
     <circle cx="50" cy="50" r="19"/>
   </symbol>
-  <symbol id="sym-koi" viewBox="0 0 160 80">
-    <!-- flowing koi, drawn head-right -->
-    <path d="M150 40 C146 28 132 20 114 20 C96 20 82 28 72 36
-             C58 26 40 12 12 4 C26 20 34 30 32 38
-             C34 44 28 56 10 74
-             C38 66 56 50 72 44
-             C84 52 98 60 116 60 C134 60 146 52 150 40 Z"/>
-    <path d="M104 21 C100 12 106 4 118 6 C110 10 107 15 106 20 Z"/>
-    <path d="M118 58 C120 66 128 72 138 70 C130 64 126 60 124 56 Z"/>
-    <circle cx="136" cy="33" r="3" class="koi-eye"/>
-  </symbol>
 </svg>
 
 <!-- ===== Animated backgrounds ===== -->
@@ -55,11 +44,8 @@
   <div class="blob b2"></div>
   <div class="blob b3"></div>
   <div class="blob b4"></div>
-  <div class="koi-orbit">
-    <svg class="koi koi-white" viewBox="0 0 120 60"><use href="#sym-koi"/></svg>
-    <svg class="koi koi-black" viewBox="0 0 120 60"><use href="#sym-koi"/></svg>
-  </div>
   <canvas id="spirits"></canvas>
+  <div id="spirit-stage"></div>
   <img class="scene-far" src="assets/spirit-scene-far.svg" alt="">
   <img class="scene-near" src="assets/spirit-scene-near.svg" alt="">
 </div>
@@ -230,6 +216,151 @@
   <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
 </footer>
 
+<!-- ===== Spirit parade creature templates ===== -->
+<template id="tpl-koi">
+  <div class="act act-koi"><div class="bob"><div class="flip">
+    <svg class="sprite koi koi-w" viewBox="0 0 200 90">
+      <g class="k-rock">
+        <g class="k-tail">
+          <path class="k-fill" d="M74 45 C56 30 42 14 18 5 C31 22 36 32 33 41 C35 47 30 58 14 76 C38 66 56 54 74 47 Z"/>
+        </g>
+        <path class="k-fill" d="M188 45 C182 27 162 21 140 23 C114 25 92 35 74 45 C92 55 114 65 140 67 C162 69 182 63 188 45 Z"/>
+        <path class="k-fill" d="M132 24 C127 13 133 3 148 5 C139 10 135 17 134 23 Z"/>
+        <g class="k-fin">
+          <path class="k-fill" d="M154 63 C157 73 166 79 178 77 C169 71 164 66 161 60 Z"/>
+        </g>
+        <ellipse class="k-spot" cx="170" cy="34" rx="10" ry="7" transform="rotate(-14 170 34)"/>
+        <circle class="k-eye" cx="177" cy="45" r="2.6"/>
+      </g>
+    </svg>
+    <svg class="sprite koi koi-b" viewBox="0 0 200 90">
+      <g class="k-rock">
+        <g class="k-tail">
+          <path class="k-fill" d="M74 45 C56 30 42 14 18 5 C31 22 36 32 33 41 C35 47 30 58 14 76 C38 66 56 54 74 47 Z"/>
+        </g>
+        <path class="k-fill" d="M188 45 C182 27 162 21 140 23 C114 25 92 35 74 45 C92 55 114 65 140 67 C162 69 182 63 188 45 Z"/>
+        <path class="k-fill" d="M132 24 C127 13 133 3 148 5 C139 10 135 17 134 23 Z"/>
+        <g class="k-fin">
+          <path class="k-fill" d="M154 63 C157 73 166 79 178 77 C169 71 164 66 161 60 Z"/>
+        </g>
+        <ellipse class="k-spot" cx="170" cy="34" rx="10" ry="7" transform="rotate(-14 170 34)"/>
+        <circle class="k-eye" cx="177" cy="45" r="2.6"/>
+      </g>
+    </svg>
+  </div></div></div>
+</template>
+
+<template id="tpl-dragon">
+  <div class="act act-dragon"><div class="bob"><div class="flip">
+    <svg class="sprite dragon" viewBox="0 0 380 140">
+      <g class="d-seg s6"><path d="M118 84 C88 82 62 74 40 54 C52 76 82 90 116 90 Z" fill="#2f3c60"/></g>
+      <g class="d-seg s5"><circle cx="128" cy="72" r="18" fill="#2f3c60"/></g>
+      <g class="d-seg s4"><circle cx="154" cy="70" r="19" fill="#2f3c60"/></g>
+      <g class="d-seg s3"><circle cx="181" cy="68" r="20" fill="#2f3c60"/></g>
+      <g class="d-seg s2"><circle cx="209" cy="66" r="20" fill="#2f3c60"/></g>
+      <g class="d-seg s1"><circle cx="237" cy="64" r="20" fill="#2f3c60"/></g>
+      <g class="d-seg s0"><circle cx="264" cy="62" r="20" fill="#2f3c60"/></g>
+      <g class="d-head">
+        <path d="M282 46 C298 34 322 36 334 50 C344 60 344 74 334 82 C320 92 296 92 284 80 C274 70 272 56 282 46 Z" fill="#2f3c60"/>
+        <path d="M334 54 L360 60 C365 64 363 71 356 73 L332 78 Z" fill="#2f3c60"/>
+        <path d="M300 40 C302 24 312 14 328 10 M312 34 C318 24 328 18 340 16" fill="none" stroke="#6d7fb0" stroke-width="5" stroke-linecap="round"/>
+        <path d="M356 64 C372 60 380 48 378 34 M354 70 C368 72 376 82 375 94" fill="none" stroke="#6d7fb0" stroke-width="2.5" stroke-linecap="round"/>
+        <circle class="d-eye" cx="316" cy="58" r="3.4"/>
+      </g>
+    </svg>
+  </div></div></div>
+</template> <template id="tpl-dragon">
+  <div class="act act-dragon"><div class="bob"><div class="flip">
+    <svg class="sprite dragon" viewBox="0 0 380 140">
+      <g class="d-seg s6"><path d="M118 84 C88 82 62 74 40 54 C52 76 82 90 116 90 Z" fill="#2f3c60"/></g>
+      <g class="d-seg s5"><circle cx="128" cy="72" r="18" fill="#2f3c60"/></g>
+      <g class="d-seg s4"><circle cx="154" cy="70" r="19" fill="#2f3c60"/></g>
+      <g class="d-seg s3"><circle cx="181" cy="68" r="20" fill="#2f3c60"/></g>
+      <g class="d-seg s2"><circle cx="209" cy="66" r="20" fill="#2f3c60"/></g>
+      <g class="d-seg s1"><circle cx="237" cy="64" r="20" fill="#2f3c60"/></g>
+      <g class="d-seg s0"><circle cx="264" cy="62" r="20" fill="#2f3c60"/></g>
+      <g class="d-head">
+        <path d="M282 46 C298 34 322 36 334 50 C344 60 344 74 334 82 C320 92 296 92 284 80 C274 70 272 56 282 46 Z" fill="#2f3c60"/>
+        <path d="M334 54 L360 60 C365 64 363 71 356 73 L332 78 Z" fill="#2f3c60"/>
+        <path d="M300 40 C302 24 312 14 328 10 M312 34 C318 24 328 18 340 16" fill="none" stroke="#6d7fb0" stroke-width="5" stroke-linecap="round"/>
+        <path d="M356 64 C372 60 380 48 378 34 M354 70 C368 72 376 82 375 94" fill="none" stroke="#6d7fb0" stroke-width="2.5" stroke-linecap="round"/>
+        <circle class="d-eye" cx="316" cy="58" r="3.4"/>
+      </g>
+    </svg>
+  </div></div></div>
+</template>
+
+<template id="tpl-moth">
+  <div class="act act-moth"><div class="bob"><div class="flip">
+    <svg class="sprite moth" viewBox="0 0 130 110">
+      <g class="m-wing wl">
+        <path d="M60 52 C36 26 10 24 5 44 C1 62 28 74 58 66 Z" fill="#3d4a78" stroke="#66779f" stroke-width="1.5"/>
+        <path d="M58 68 C38 76 24 88 30 97 C38 104 55 93 61 78 Z" fill="#333f68" stroke="#66779f" stroke-width="1.5"/>
+        <circle class="m-spot" cx="30" cy="48" r="5"/>
+        <circle class="m-spot sm" cx="40" cy="86" r="3"/>
+      </g>
+      <g class="m-wing wr">
+        <path d="M70 52 C94 26 120 24 125 44 C129 62 102 74 72 66 Z" fill="#3d4a78" stroke="#66779f" stroke-width="1.5"/>
+        <path d="M72 68 C92 76 106 88 100 97 C92 104 75 93 69 78 Z" fill="#333f68" stroke="#66779f" stroke-width="1.5"/>
+        <circle class="m-spot" cx="100" cy="48" r="5"/>
+        <circle class="m-spot sm" cx="90" cy="86" r="3"/>
+      </g>
+      <ellipse cx="65" cy="64" rx="8" ry="21" fill="#2b3452" stroke="#66779f" stroke-width="1.5"/>
+      <circle cx="65" cy="42" r="6.5" fill="#2b3452" stroke="#66779f" stroke-width="1.5"/>
+      <path d="M61 38 C55 26 46 20 36 20 M69 38 C75 26 84 20 94 20"
+            fill="none" stroke="#6d7fb0" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div></div></div>
+</template>
+
+<template id="tpl-jellies">
+  <div class="act act-jellies"><div class="bobx">
+    <div class="jw j1"><svg class="sprite jelly" viewBox="0 0 80 120">
+      <g class="j-bell">
+        <path d="M10 48 C10 20 70 20 70 48 C70 58 56 63 40 63 C24 63 10 58 10 48 Z" fill="url(#jgrad)"/>
+      </g>
+      <path class="j-t t1" d="M22 62 C20 76 26 88 22 104" />
+      <path class="j-t t2" d="M36 64 C34 80 40 94 36 112" />
+      <path class="j-t t3" d="M52 64 C54 80 48 92 54 108" />
+      <path class="j-t t4" d="M64 60 C66 74 60 84 64 98" />
+      <defs><radialGradient id="jgrad" cx="50%" cy="30%" r="75%">
+        <stop offset="0%" stop-color="#9ff0df" stop-opacity="0.95"/>
+        <stop offset="55%" stop-color="#4aa8a4" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#274067" stop-opacity="0.35"/>
+      </radialGradient></defs>
+    </svg></div>
+    <div class="jw j2"><svg class="sprite jelly" viewBox="0 0 80 120">
+      <g class="j-bell">
+        <path d="M10 48 C10 20 70 20 70 48 C70 58 56 63 40 63 C24 63 10 58 10 48 Z" fill="url(#jgrad2)"/>
+      </g>
+      <path class="j-t t1" d="M22 62 C20 76 26 88 22 104" />
+      <path class="j-t t2" d="M36 64 C34 80 40 94 36 112" />
+      <path class="j-t t3" d="M52 64 C54 80 48 92 54 108" />
+      <path class="j-t t4" d="M64 60 C66 74 60 84 64 98" />
+      <defs><radialGradient id="jgrad2" cx="50%" cy="30%" r="75%">
+        <stop offset="0%" stop-color="#cbb0f5" stop-opacity="0.95"/>
+        <stop offset="55%" stop-color="#7e63b8" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#2d3567" stop-opacity="0.35"/>
+      </radialGradient></defs>
+    </svg></div>
+    <div class="jw j3"><svg class="sprite jelly" viewBox="0 0 80 120">
+      <g class="j-bell">
+        <path d="M10 48 C10 20 70 20 70 48 C70 58 56 63 40 63 C24 63 10 58 10 48 Z" fill="url(#jgrad3)"/>
+      </g>
+      <path class="j-t t1" d="M22 62 C20 76 26 88 22 104" />
+      <path class="j-t t2" d="M36 64 C34 80 40 94 36 112" />
+      <path class="j-t t4" d="M64 60 C66 74 60 84 64 98" />
+      <defs><radialGradient id="jgrad3" cx="50%" cy="30%" r="75%">
+        <stop offset="0%" stop-color="#9ff0df" stop-opacity="0.9"/>
+        <stop offset="55%" stop-color="#4aa8a4" stop-opacity="0.55"/>
+        <stop offset="100%" stop-color="#274067" stop-opacity="0.3"/>
+      </radialGradient></defs>
+    </svg></div>
+  </div></div>
+</template>
+
 <script src="app.js"></script>
 </body>
 </html>
+
+

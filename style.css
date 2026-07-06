@@ -68,25 +68,97 @@ body {
 @keyframes sway-far  { from { transform: translateX(0); }      to { transform: translateX(1.6%); } }
 @keyframes sway-near { from { transform: translateX(0.8%); }   to { transform: translateX(-0.8%); } }
 
-/* Tui & La — koi circling in the spirit sky */
-.koi-orbit {
-  position: absolute; top: 16%; right: 12%;
-  width: 340px; height: 340px; pointer-events: none;
-  animation: orbit 60s linear infinite;
-  opacity: 0.5;
-}
-.koi { position: absolute; width: 108px; height: 54px; top: 50%; margin-top: -27px; }
-.koi-white { left: -54px;  transform: rotate(90deg);
-  fill: #dfe8f2; filter: drop-shadow(0 0 12px rgba(200,230,255,0.55)); }
-.koi-white .koi-eye { fill: #10131a; }
-.koi-black { right: -54px; transform: rotate(-90deg);
-  fill: #10131a; filter: drop-shadow(0 0 12px rgba(120,150,255,0.45)); }
-.koi-black .koi-eye { fill: #dfe8f2; }
-@keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@media (max-width: 900px) {
-  .koi-orbit { width: 220px; height: 220px; right: 6%; top: 12%; }
-  .koi { width: 76px; height: 38px; margin-top: -19px; }
-  .koi-white { left: -38px; } .koi-black { right: -38px; }
+/* ===== Spirit parade — creatures cycle across the sky one act at a time ===== */
+#spirit-stage { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+
+.act { position: absolute; left: 0; opacity: 0.55; will-change: transform;
+  animation: travel-ltr var(--dur, 45s) linear both; }
+.act.rtl { animation-name: travel-rtl; }
+@keyframes travel-ltr { from { transform: translateX(calc(-1 * var(--w, 340px))); } to { transform: translateX(100vw); } }
+@keyframes travel-rtl { from { transform: translateX(100vw); } to { transform: translateX(calc(-1 * var(--w, 340px))); } }
+.act .bob  { animation: bob 7s ease-in-out infinite; }
+.act .bobx { animation: bobx 6s ease-in-out infinite; }
+@keyframes bob  { 0%, 100% { transform: translateY(-16px); } 50% { transform: translateY(16px); } }
+@keyframes bobx { 0%, 100% { transform: translateX(-12px); } 50% { transform: translateX(12px); } }
+.act.rtl .flip { transform: scaleX(-1); }
+
+/* --- koi pair (leader white, follower black) --- */
+.act-koi { --w: 380px; }
+.act-koi .flip { position: relative; width: 380px; height: 160px; }
+.act-koi .koi { position: absolute; width: 200px; height: 90px; }
+.act-koi .koi-w { top: 0; left: 170px; }
+.act-koi .koi-b { top: 66px; left: 0; --ph: -1.7s; }
+.koi-w { filter: drop-shadow(0 0 14px rgba(205,232,255,0.5)); }
+.koi-w .k-fill { fill: #e6edf7; }
+.koi-w .k-spot { fill: #10131a; }
+.koi-w .k-eye  { fill: #10131a; }
+.koi-b { filter: drop-shadow(0 0 14px rgba(130,160,255,0.4)); }
+.koi-b .k-fill { fill: #141a26; stroke: #45557a; stroke-width: 2; }
+.koi-b .k-spot { fill: #e6edf7; }
+.koi-b .k-eye  { fill: #e6edf7; }
+.k-rock { animation: k-rock 3.8s ease-in-out infinite; animation-delay: var(--ph, 0s);
+  transform-box: fill-box; transform-origin: 60% 50%; }
+@keyframes k-rock { 0%, 100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
+.k-tail { animation: k-tail 1.9s ease-in-out infinite; animation-delay: var(--ph, 0s);
+  transform-box: fill-box; transform-origin: right center; }
+@keyframes k-tail { 0%, 100% { transform: rotate(7deg); } 50% { transform: rotate(-7deg); } }
+.k-fin { animation: k-fin 1.1s ease-in-out infinite; animation-delay: var(--ph, 0s);
+  transform-box: fill-box; transform-origin: top right; }
+@keyframes k-fin { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+
+/* --- dragon spirit (segments ripple in sequence) --- */
+.act-dragon { --w: 560px; }
+.act-dragon .sprite { width: 540px; height: 200px;
+  filter: drop-shadow(0 0 16px rgba(110,150,255,0.35)); }
+.d-seg, .d-head { animation: d-bob 2.8s ease-in-out infinite; }
+@keyframes d-bob { 0%, 100% { transform: translateY(-5px); } 50% { transform: translateY(5px); } }
+.d-head       { animation-delay: 0s; }
+.d-seg.s1 { animation-delay: -0.35s; } .d-seg.s2 { animation-delay: -0.7s; }
+.d-seg.s3 { animation-delay: -1.05s; } .d-seg.s4 { animation-delay: -1.4s; }
+.d-seg.s5 { animation-delay: -1.75s; } .d-seg.s6 { animation-delay: -2.1s; }
+.d-eye { fill: #8fe8d8; filter: drop-shadow(0 0 5px #8fe8d8); }
+
+/* --- moth spirit (wings flap) --- */
+.act-moth { --w: 240px; }
+.act-moth .sprite { width: 210px; height: 178px;
+  filter: drop-shadow(0 0 14px rgba(160,190,255,0.4)); }
+.m-wing { transform-box: fill-box; }
+.m-wing.wl { transform-origin: right center; animation: flap-l 1.5s ease-in-out infinite; }
+.m-wing.wr { transform-origin: left center;  animation: flap-r 1.5s ease-in-out infinite; }
+@keyframes flap-l { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(0.5); } }
+@keyframes flap-r { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(0.5); } }
+.m-spot { fill: #8fe8d8; opacity: 0.9; filter: drop-shadow(0 0 5px #8fe8d8); }
+.m-spot.sm { fill: #c9a6ff; filter: drop-shadow(0 0 4px #c9a6ff); }
+
+/* --- jellyfish trio (rise from below, bells pulse, tendrils sway) --- */
+.act-jellies { --w: 300px; top: 0; left: 40%;
+  animation-name: rise; }
+.act-jellies.rtl { animation-name: rise; }
+@keyframes rise { from { transform: translateY(100vh); } to { transform: translateY(-420px); } }
+.act-jellies .bobx { display: flex; align-items: flex-start; gap: 26px; }
+.jw { width: 84px; }
+.jw.j1 { margin-top: 40px; }
+.jw.j2 { width: 108px; --ph: -1.2s; }
+.jw.j3 { width: 66px; margin-top: 90px; --ph: -2.3s; }
+.jelly { width: 100%; height: auto; filter: drop-shadow(0 0 12px rgba(120,220,200,0.35)); }
+.j-bell { animation: j-pulse 3.2s ease-in-out infinite; animation-delay: var(--ph, 0s);
+  transform-box: fill-box; transform-origin: center top; }
+@keyframes j-pulse { 0%, 100% { transform: scaleY(1) scaleX(1); } 50% { transform: scaleY(0.86) scaleX(1.06); } }
+.j-t { fill: none; stroke: #7fd8c8; stroke-width: 3; stroke-linecap: round; opacity: 0.75;
+  animation: j-sway 3.2s ease-in-out infinite; animation-delay: var(--ph, 0s);
+  transform-box: fill-box; transform-origin: center top; }
+.j-t.t2 { animation-delay: calc(var(--ph, 0s) - 0.4s); }
+.j-t.t3 { animation-delay: calc(var(--ph, 0s) - 0.8s); }
+.j-t.t4 { animation-delay: calc(var(--ph, 0s) - 1.2s); }
+@keyframes j-sway { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(-4deg); } }
+
+@media (max-width: 700px) {
+  .act { opacity: 0.45; }
+  .act-koi { --w: 260px; } .act-koi .flip { width: 260px; height: 112px; }
+  .act-koi .koi { width: 138px; height: 62px; }
+  .act-koi .koi-w { left: 118px; } .act-koi .koi-b { top: 46px; }
+  .act-dragon { --w: 380px; } .act-dragon .sprite { width: 360px; height: 133px; }
+  .act-moth { --w: 160px; } .act-moth .sprite { width: 145px; height: 123px; }
 }
 
 .bd-layer {
@@ -110,7 +182,8 @@ body.bg-backdrops #bg-scrim {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blob, .bd-layer.on, .koi-orbit, .scene-far, .scene-near, .owl-glint { animation: none !important; }
+  .blob, .bd-layer.on, .scene-far, .scene-near, .owl-glint { animation: none !important; }
+  #spirit-stage { display: none; }
   * { transition-duration: 0.01ms !important; }
 }
 

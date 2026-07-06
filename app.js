@@ -594,8 +594,8 @@ function applyBg(theme) {
   document.body.classList.toggle('bg-backdrops', useBackdrops);
   document.getElementById('bg-aurora').classList.toggle('hidden', useBackdrops);
   document.getElementById('bg-backdrops').classList.toggle('hidden', !useBackdrops);
-  if (useBackdrops) { stopSpirits(); startBackdrops(); }
-  else { stopBackdrops(); startSpirits(); }
+  if (useBackdrops) { stopSpirits(); stopParade(); startBackdrops(); }
+  else { stopBackdrops(); startSpirits(); startParade(); }
   document.querySelectorAll('input[name="bg"]').forEach(r => { r.checked = r.value === theme; });
 }
 function refreshBackdropPool() {
@@ -639,6 +639,54 @@ function startSpirits() {
 }
 function stopSpirits() {
   if (spiritsRAF) { cancelAnimationFrame(spiritsRAF); spiritsRAF = null; }
+}
+
+/* ---------- spirit parade: one creature act crosses the sky at a time ---------- */
+const PARADE_ACTS = [
+  { id: 'koi',     dur: [40, 54], y: [5, 42] },
+  { id: 'dragon',  dur: [48, 62], y: [8, 36] },
+  { id: 'moth',    dur: [30, 42], y: [10, 46] },
+  { id: 'jellies', dur: [42, 56], rise: true }
+];
+let paradeTimer = null, lastActId = null;
+
+function startParade() {
+  if (paradeTimer !== null || reducedMotion) return;
+  paradeTimer = setTimeout(runParadeAct, 3000 + Math.random() * 7000);
+}
+function stopParade() {
+  clearTimeout(paradeTimer); paradeTimer = null;
+  document.getElementById('spirit-stage').innerHTML = '';
+}
+function runParadeAct() { spawnAct(); }
+
+function spawnAct(forceId, progress) {
+  const stage = document.getElementById('spirit-stage');
+  const pool = PARADE_ACTS.filter(a => a.id !== lastActId);
+  const act = forceId
+    ? PARADE_ACTS.find(a => a.id === forceId)
+    : pool[Math.floor(Math.random() * pool.length)];
+  if (!act) return;
+  lastActId = act.id;
+
+  const node = document.getElementById('tpl-' + act.id).content.firstElementChild.cloneNode(true);
+  const dur = (act.dur[0] + Math.random() * (act.dur[1] - act.dur[0])) * 1000;
+  node.style.setProperty('--dur', dur + 'ms');
+  if (act.rise) {
+    node.style.left = (12 + Math.random() * 62) + '%';
+  } else {
+    node.style.top = (act.y[0] + Math.random() * (act.y[1] - act.y[0])) + '%';
+    if (Math.random() < 0.5) node.classList.add('rtl');
+  }
+  if (progress) node.style.animationDelay = (-dur * progress) + 'ms';
+
+  node.addEventListener('animationend', e => {
+    if (e.target !== node) return;
+    node.remove();
+    if (paradeTimer !== null)
+      paradeTimer = setTimeout(runParadeAct, 8000 + Math.random() * 14000);
+  });
+  stage.appendChild(node);
 }
 
 /* Ken Burns slideshow of the user's own show backdrops */
