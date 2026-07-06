@@ -1,6 +1,7 @@
 /* Wan Shi Tong's Library — service worker (network-first, offline fallback) */
-const CACHE = 'wstl-v4';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg'];
+const CACHE = 'wstl-v5';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg',
+  'assets/spirit-scene-far.svg', 'assets/spirit-scene-near.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -30,11 +30,13 @@ body {
 }
 
 /* ===== Animated backgrounds ===== */
-#bg-aurora, #bg-backdrops { position: fixed; inset: 0; z-index: -3; overflow: hidden; }
+#bg-backdrops { position: fixed; inset: 0; z-index: -3; overflow: hidden; }
+/* aurora stack sits ABOVE the scrim so the spirit-world scenery stays visible */
+#bg-aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
 
 .blob {
   position: absolute; width: 62vmax; height: 62vmax; border-radius: 50%;
-  filter: blur(40px); opacity: 0.5; will-change: transform;
+  filter: blur(40px); opacity: 0.32; will-change: transform;
 }
 .blob.b1 { top: -25%; left: -15%;
   background: radial-gradient(circle, rgba(45,150,140,0.5) 0%, transparent 62%);
@@ -53,6 +55,39 @@ body {
 @keyframes drift3 { from { transform: translate(0,0) scale(0.95);} to { transform: translate(10vw, -8vh) scale(1.15); } }
 
 #spirits { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* spirit-world scenery (original vector layers) */
+.scene-far, .scene-near {
+  position: absolute; bottom: 0; left: -3%; width: 106%; height: auto;
+  min-height: 34vh; max-height: 62vh; object-fit: cover; object-position: bottom;
+  pointer-events: none; user-select: none;
+}
+.scene-far  { opacity: 0.9; animation: sway-far 90s ease-in-out infinite alternate; }
+.scene-near { opacity: 0.95; min-height: 26vh; max-height: 48vh;
+  animation: sway-near 70s ease-in-out infinite alternate; }
+@keyframes sway-far  { from { transform: translateX(0); }      to { transform: translateX(1.6%); } }
+@keyframes sway-near { from { transform: translateX(0.8%); }   to { transform: translateX(-0.8%); } }
+
+/* Tui & La — koi circling in the spirit sky */
+.koi-orbit {
+  position: absolute; top: 16%; right: 12%;
+  width: 340px; height: 340px; pointer-events: none;
+  animation: orbit 60s linear infinite;
+  opacity: 0.5;
+}
+.koi { position: absolute; width: 108px; height: 54px; top: 50%; margin-top: -27px; }
+.koi-white { left: -54px;  transform: rotate(90deg);
+  fill: #dfe8f2; filter: drop-shadow(0 0 12px rgba(200,230,255,0.55)); }
+.koi-white .koi-eye { fill: #10131a; }
+.koi-black { right: -54px; transform: rotate(-90deg);
+  fill: #10131a; filter: drop-shadow(0 0 12px rgba(120,150,255,0.45)); }
+.koi-black .koi-eye { fill: #dfe8f2; }
+@keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (max-width: 900px) {
+  .koi-orbit { width: 220px; height: 220px; right: 6%; top: 12%; }
+  .koi { width: 76px; height: 38px; margin-top: -19px; }
+  .koi-white { left: -38px; } .koi-black { right: -38px; }
+}
 
 .bd-layer {
   position: absolute; inset: -6%;
@@ -75,7 +110,7 @@ body.bg-backdrops #bg-scrim {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blob, .bd-layer.on { animation: none !important; }
+  .blob, .bd-layer.on, .koi-orbit, .scene-far, .scene-near, .owl-glint { animation: none !important; }
   * { transition-duration: 0.01ms !important; }
 }
 
@@ -88,6 +123,11 @@ body.bg-backdrops #bg-scrim {
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--line);
 }
+.brand { display: flex; align-items: center; gap: 0.65rem; }
+#wst-owl { width: 2.45rem; height: 2.7rem; flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgba(143,232,216,0.28)); }
+.owl-glint { animation: glint 7s ease-in-out infinite; }
+@keyframes glint { 0%, 91%, 100% { opacity: 1; } 94%, 97% { opacity: 0; } }
 .brand h1 {
   font-family: 'Cinzel', serif; font-weight: 900;
   font-size: clamp(0.95rem, 2.6vw, 1.25rem);

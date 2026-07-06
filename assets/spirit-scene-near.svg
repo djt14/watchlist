@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 420" preserveAspectRatio="xMidYMax slice">
+  <style>
+    .shine { animation: shine 7s ease-in-out infinite; }
+    .shine.d1 { animation-delay: -2.5s; } .shine.d2 { animation-delay: -5s; }
+    @keyframes shine { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    .spore { animation: spore 11s linear infinite; }
+    .spore.d1 { animation-delay: -4s; } .spore.d2 { animation-delay: -8s; }
+    @keyframes spore { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 0.8; }
+                       85% { opacity: 0.5; } 100% { transform: translateY(-90px); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .shine, .spore { animation: none; } }
+  </style>
+  <defs>
+    <radialGradient id="cap-t" cx="50%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#3ec9b4" stop-opacity="0.85"/>
+      <stop offset="55%" stop-color="#1f5e63" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#0c1019" stop-opacity="0.1"/>
+    </radialGradient>
+    <radialGradient id="cap-v" cx="50%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#a97ee8" stop-opacity="0.8"/>
+      <stop offset="55%" stop-color="#4b3a78" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#0c1019" stop-opacity="0.1"/>
+    </radialGradient>
+    <radialGradient id="under" cx="50%" cy="0%" r="80%">
+      <stop offset="0%" stop-color="#7de8d4" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#7de8d4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- ===== left: gnarled elder tree ===== -->
+  <g fill="none" stroke="#0c1019" stroke-linecap="round">
+    <path d="M60 420 C60 330 40 290 62 230 C80 180 66 140 40 110" stroke-width="52"/>
+    <path d="M64 250 C120 216 170 218 214 176 C242 150 240 116 222 106 C206 97 190 108 196 124 C202 138 220 134 218 122" stroke-width="18"/>
+    <path d="M52 150 C46 110 60 84 88 66 C110 52 134 58 136 76 C138 91 124 99 114 91" stroke-width="13"/>
+    <path d="M40 110 C22 96 10 78 8 56" stroke-width="12"/>
+    <path d="M70 330 C130 322 168 334 214 320 C248 310 258 288 248 276 C240 266 226 271 228 282" stroke-width="14"/>
+  </g>
+  <!-- hanging vines from the big branch -->
+  <g fill="none" stroke="#0c1019" stroke-width="4" stroke-linecap="round" opacity="0.9">
+    <path d="M150 210 C148 240 154 262 150 288"/>
+    <path d="M188 190 C186 214 192 232 188 252"/>
+    <path d="M120 226 C118 250 124 274 120 302"/>
+  </g>
+  <circle class="shine"    cx="150" cy="292" r="7" fill="url(#under)"/>
+  <circle class="shine d1" cx="188" cy="256" r="6" fill="url(#under)"/>
+  <circle class="shine d2" cx="120" cy="306" r="6" fill="url(#under)"/>
+
+  <!-- ===== right: giant spirit mushrooms ===== -->
+  <g>
+    <!-- tall mushroom -->
+    <path d="M1418 420 C1414 350 1420 300 1416 252" stroke="#0c1019" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M1310 262 C1318 196 1370 162 1420 162 C1470 162 1520 198 1526 262 C1470 240 1360 240 1310 262 Z" fill="#0c1019"/>
+    <path d="M1316 256 C1326 200 1372 170 1420 170 C1468 170 1512 202 1520 256 C1466 236 1364 236 1316 256 Z" fill="url(#cap-t)"/>
+    <ellipse class="shine" cx="1418" cy="258" rx="86" ry="20" fill="url(#under)"/>
+    <!-- medium mushroom -->
+    <path d="M1530 420 C1528 380 1532 352 1530 322" stroke="#0c1019" stroke-width="18" fill="none" stroke-linecap="round"/>
+    <path d="M1462 330 C1468 284 1500 262 1532 262 C1564 262 1592 286 1598 330 C1560 314 1494 314 1462 330 Z" fill="#0c1019"/>
+    <path d="M1466 326 C1474 288 1502 268 1532 268 C1562 268 1586 290 1592 326 C1556 310 1498 310 1466 326 Z" fill="url(#cap-v)"/>
+    <ellipse class="shine d1" cx="1530" cy="324" rx="52" ry="13" fill="url(#under)"/>
+    <!-- small mushroom -->
+    <path d="M1346 420 C1344 396 1348 380 1346 362" stroke="#0c1019" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <path d="M1302 366 C1306 336 1326 322 1346 322 C1366 322 1384 338 1388 366 C1362 355 1322 355 1302 366 Z" fill="#0c1019"/>
+    <path d="M1305 363 C1310 340 1328 328 1346 328 C1364 328 1379 341 1384 363 C1360 352 1324 352 1305 363 Z" fill="url(#cap-t)"/>
+    <!-- rising spores -->
+    <circle class="spore"    cx="1400" cy="240" r="3.4" fill="#8fe8d8"/>
+    <circle class="spore d1" cx="1452" cy="232" r="2.8" fill="#c9a6ff"/>
+    <circle class="spore d2" cx="1516" cy="300" r="3"   fill="#8fe8d8"/>
+  </g>
+
+  <!-- low fog wisps -->
+  <g fill="#1d2942" opacity="0.5">
+    <ellipse cx="380"  cy="408" rx="260" ry="26"/>
+    <ellipse cx="900"  cy="414" rx="320" ry="30"/>
+    <ellipse cx="1360" cy="410" rx="240" ry="26"/>
+  </g>
+</svg>
