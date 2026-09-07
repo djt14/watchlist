@@ -1,22 +1,21 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Wan Shi Tong's Library</title>
+<meta name="description" content="A living library for the shows you love. Track your next episode, collect new discoveries, and keep your watchlist in order.">
 <meta name="theme-color" content="#0b0e14">
 <meta name="color-scheme" content="dark">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="library-scene.css">
 </head>
 <body>
-
-<!-- ===== Nation insignia (hidden SVG defs) ===== -->
+<a class="skip-link" href="#shelves">Skip to your shows</a>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="sym-fire" viewBox="0 0 100 100">
     <path d="M50 8 C64 32 82 40 72 64 C67 76 58 82 50 94 C42 82 33 76 28 64 C18 40 36 32 50 8Z"/>
@@ -37,107 +36,21 @@
     <circle cx="50" cy="50" r="19"/>
   </symbol>
 </svg>
-
-<!-- ===== Animated backgrounds ===== -->
 <div id="bg-aurora" aria-hidden="true">
-  <div class="blob b1"></div>
-  <div class="blob b2"></div>
-  <div class="blob b3"></div>
-  <div class="blob b4"></div>
-  <canvas id="spirits"></canvas>
-  <div id="spirit-stage"></div>
-  <img class="scene-far" src="assets/spirit-scene-far.svg" alt="">
-  <img class="scene-near" src="assets/spirit-scene-near.svg" alt="">
 </div>
-<div id="bg-backdrops" class="hidden" aria-hidden="true">
-  <div class="bd-layer" id="bd-a"></div>
-  <div class="bd-layer" id="bd-b"></div>
+<div id="bg-backdrops" hidden aria-hidden="true">
+<div class="bd-layer" id="bd-a">
 </div>
-<div id="bg-scrim" aria-hidden="true"></div>
-
-<!-- ===== Setup overlay ===== -->
-<div id="setup" class="overlay hidden">
-  <div class="panel">
-    <h2>Enter the Library</h2>
-    <p class="muted">Wan Shi Tong asks two keys of every visitor. They are stored only on this device.</p>
-
-    <label>TMDB API Key
-      <span class="hint">themoviedb.org &rarr; Settings &rarr; API &rarr; Developer key (v3 auth)</span>
-      <input id="in-tmdb" type="text" autocomplete="off" spellcheck="false" placeholder="your TMDB v3 API key">
-    </label>
-
-    <label>GitHub Token <span class="hint">classic token with the <b>gist</b> scope only &mdash; powers cross-device sync</span>
-      <input id="in-token" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_...">
-    </label>
-
-    <label>Existing Library ID <span class="hint">optional &mdash; paste the Gist ID from another device to sync. Leave blank to start fresh.</span>
-      <input id="in-gist" type="text" autocomplete="off" spellcheck="false" placeholder="(leave blank on first device)">
-    </label>
-
-    <div id="setup-msg" class="msg"></div>
-    <button id="btn-setup" class="btn btn-fire">Open the Library</button>
-  </div>
+<div class="bd-layer" id="bd-b">
+</div>
+</div>
+<div id="bg-scrim" aria-hidden="true">
 </div>
 
-<!-- ===== Settings modal ===== -->
-<div id="settings" class="overlay hidden">
-  <div class="panel">
-    <h2>Library Settings</h2>
-    <label>Your Library ID <span class="hint">paste this on another device to sync your shows</span>
-      <input id="set-gist" type="text" readonly>
-    </label>
-    <label>TMDB API Key
-      <input id="set-tmdb" type="text" autocomplete="off" spellcheck="false">
-    </label>
-    <label>GitHub Token (gist scope)
-      <input id="set-token" type="password" autocomplete="off" spellcheck="false">
-    </label>
-
-    <fieldset class="bg-picker">
-      <legend>Background</legend>
-      <label class="radio">
-        <input type="radio" name="bg" value="aurora">
-        <span><b>Spirit-world aurora</b><span class="hint">drifting lights of the Spirit World</span></span>
-      </label>
-      <label class="radio">
-        <input type="radio" name="bg" value="backdrops">
-        <span><b>My library</b><span class="hint">slow slideshow of scenes from your own shows</span></span>
-      </label>
-    </fieldset>
-
-    <div id="settings-msg" class="msg"></div>
-    <div class="row">
-      <button id="btn-save-settings" class="btn btn-earth">Save</button>
-      <button id="btn-pull" class="btn btn-water">Sync Now</button>
-      <button id="btn-close-settings" class="btn btn-ghost">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== Stats modal ===== -->
-<div id="stats" class="overlay hidden">
-  <div class="panel">
-    <h2>Wan Shi Tong's Records</h2>
-    <div id="stats-content"></div>
-    <div class="row"><button id="btn-close-stats" class="btn btn-ghost">Close</button></div>
-  </div>
-</div>
-
-<!-- ===== Show detail modal ===== -->
-<div id="detail" class="overlay hidden">
-  <div class="detail-panel">
-    <button id="btn-close-detail" class="detail-close" aria-label="Close">&#10005;</button>
-    <div id="detail-content"></div>
-  </div>
-</div>
-
-<!-- ===== Toasts ===== -->
-<div id="toasts" aria-live="polite"></div>
-
-<!-- ===== Header ===== -->
 <header id="topbar">
-  <div class="brand">
-    <svg id="wst-owl" viewBox="0 0 120 132" aria-hidden="true">
+<div class="topbar-inner">
+<div class="brand">
+<svg id="wst-owl" viewBox="0 0 120 132" aria-hidden="true">
       <!-- ear tufts -->
       <path d="M34 30 C26 14 16 6 6 0 C24 2 40 12 48 24 L40 36 Z" fill="#1d2433" stroke="#39445c" stroke-width="2"/>
       <path d="M86 30 C94 14 104 6 114 0 C96 2 80 12 72 24 L80 36 Z" fill="#1d2433" stroke="#39445c" stroke-width="2"/>
@@ -158,209 +71,296 @@
       <!-- beak -->
       <path d="M60 58 L55 65 L60 80 L65 65 Z" fill="#10131a"/>
     </svg>
-    <div class="title-block">
-      <h1>Wan Shi Tong's Library</h1>
-      <span class="tagline">He Who Knows 10,000 Shows</span>
-    </div>
-  </div>
-  <div class="header-tools">
-    <div class="search-wrap">
-      <input id="search" type="search" placeholder="Search shows&hellip;" autocomplete="off" aria-label="Search shows">
-      <div id="results" class="results hidden"></div>
-    </div>
-    <button id="btn-stats" class="icon-btn" title="Wan Shi Tong's Records" aria-label="Statistics">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
-    </button>
-    <span id="sync-status" class="sync-status" title="Sync status">&bull;</span>
-    <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">&#9881;</button>
-  </div>
+<div class="title-block">
+<h1>Wan Shi Tong's Library</h1>
+<span class="tagline">He Who Knows 10,000 Shows</span>
+</div>
+</div>
+<div class="header-actions">
+<button id="sync-status" type="button" class="sync-status local" aria-label="Library sync settings">Saved on this device</button>
+<button id="btn-stats" type="button" class="icon-btn" title="Statistics" aria-label="Statistics">
+<svg viewBox="0 0 24 24" aria-hidden="true">
+<path d="M5 20V11M12 20V4M19 20v-7"/>
+</svg>
+</button>
+<button id="btn-settings" type="button" class="icon-btn" title="Settings" aria-label="Settings">
+<svg viewBox="0 0 24 24" aria-hidden="true">
+<path d="m9 3-.7 2.4-2.1 1.2-2.4-.6-2 3.4 1.7 1.8v2.4l-1.7 1.8 2 3.4 2.4-.6 2.1 1.2L9 22h4l.7-2.6 2.1-1.2 2.4.6 2-3.4-1.7-1.8v-2.4l1.7-1.8-2-3.4-2.4.6-2.1-1.2L13 3Z" transform="translate(1 -1) scale(.95)"/>
+<circle cx="11.5" cy="11" r="3"/>
+</svg>
+</button>
+</div>
+<div class="search-wrap">
+<label class="sr-only" for="search">Find a show to add</label>
+<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+<circle cx="10.5" cy="10.5" r="6.5"/>
+<path d="m16 16 4.5 4.5"/>
+</svg>
+<input id="search" type="search" placeholder="Find a show to add…" autocomplete="off" aria-controls="results">
+<button id="btn-clear-search" class="icon-btn search-clear hidden" type="button" aria-label="Clear search">×</button>
+<div id="results" class="results hidden" aria-label="Show search results">
+</div>
+</div>
+</div>
 </header>
-
-<!-- ===== Shelves ===== -->
-<main id="shelves">
-  <section class="shelf" data-status="watching">
-    <h2><svg class="insignia"><use href="#sym-fire"/></svg> Now Watching <span class="chip" id="chip-watching"></span></h2>
-    <div class="row-wrap">
-      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
-      <div class="cards" id="lane-watching"></div>
-      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
-    </div>
-  </section>
-  <section class="shelf" data-status="plan">
-    <h2><svg class="insignia"><use href="#sym-air"/></svg> Scrolls to Unroll <span class="chip" id="chip-plan"></span></h2>
-    <div class="row-wrap">
-      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
-      <div class="cards" id="lane-plan"></div>
-      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
-    </div>
-  </section>
-  <section class="shelf" data-status="hold">
-    <h2><svg class="insignia"><use href="#sym-water"/></svg> Frozen in Time <span class="chip" id="chip-hold"></span></h2>
-    <div class="row-wrap">
-      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
-      <div class="cards" id="lane-hold"></div>
-      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
-    </div>
-  </section>
-  <section class="shelf" data-status="completed">
-    <h2><svg class="insignia"><use href="#sym-earth"/></svg> Mastered <span class="chip" id="chip-completed"></span></h2>
-    <div class="row-wrap">
-      <button class="row-arrow left" aria-label="Scroll left">&#8249;</button>
-      <div class="cards" id="lane-completed"></div>
-      <button class="row-arrow right" aria-label="Scroll right">&#8250;</button>
-    </div>
-  </section>
+<main id="shelves" tabindex="-1">
+<div class="library-toolbar">
+<p>
+<span class="library-label">Your collection</span>
+<span class="library-intro">A place for every story.</span>
+</p>
+<button id="btn-motion" type="button" class="motion-control" aria-pressed="false">Pause scenery</button>
+</div>
+<div id="storage-alert" class="storage-alert hidden" role="alert">
+</div>
+<section class="shelf" data-status="watching" aria-labelledby="shelf-watching">
+<div class="shelf-heading">
+<div>
+<h2 id="shelf-watching">
+<svg class="insignia" aria-hidden="true">
+<use href="#sym-fire"/>
+</svg>Now Watching<span class="chip shelf-count" id="chip-watching">0</span>
+</h2>
+<p class="shelf-description">Pick up where you left off.</p>
+</div>
+</div>
+<div class="row-wrap">
+<button class="row-arrow left" type="button" aria-label="Scroll Now Watching left" aria-controls="lane-watching" disabled>‹</button>
+<div class="cards" id="lane-watching" role="region" aria-label="Now Watching shows" tabindex="0">
+</div>
+<button class="row-arrow right" type="button" aria-label="Scroll Now Watching right" aria-controls="lane-watching" disabled>›</button>
+</div>
+</section>
+<section class="shelf" data-status="plan" aria-labelledby="shelf-plan">
+<div class="shelf-heading">
+<div>
+<h2 id="shelf-plan">
+<svg class="insignia" aria-hidden="true">
+<use href="#sym-air"/>
+</svg>Scrolls to Unroll<span class="chip shelf-count" id="chip-plan">0</span>
+</h2>
+<p class="shelf-description">Planned · Your next discoveries.</p>
+</div>
+</div>
+<div class="row-wrap">
+<button class="row-arrow left" type="button" aria-label="Scroll Scrolls to Unroll left" aria-controls="lane-plan" disabled>‹</button>
+<div class="cards" id="lane-plan" role="region" aria-label="Scrolls to Unroll shows" tabindex="0">
+</div>
+<button class="row-arrow right" type="button" aria-label="Scroll Scrolls to Unroll right" aria-controls="lane-plan" disabled>›</button>
+</div>
+</section>
+<section class="shelf" data-status="hold" aria-labelledby="shelf-hold">
+<div class="shelf-heading">
+<div>
+<h2 id="shelf-hold">
+<svg class="insignia" aria-hidden="true">
+<use href="#sym-water"/>
+</svg>Frozen in Time<span class="chip shelf-count" id="chip-hold">0</span>
+</h2>
+<p class="shelf-description">On hold · Ready when you are.</p>
+</div>
+</div>
+<div class="row-wrap">
+<button class="row-arrow left" type="button" aria-label="Scroll Frozen in Time left" aria-controls="lane-hold" disabled>‹</button>
+<div class="cards" id="lane-hold" role="region" aria-label="Frozen in Time shows" tabindex="0">
+</div>
+<button class="row-arrow right" type="button" aria-label="Scroll Frozen in Time right" aria-controls="lane-hold" disabled>›</button>
+</div>
+</section>
+<section class="shelf" data-status="completed" aria-labelledby="shelf-completed">
+<div class="shelf-heading">
+<div>
+<h2 id="shelf-completed">
+<svg class="insignia" aria-hidden="true">
+<use href="#sym-earth"/>
+</svg>Mastered<span class="chip shelf-count" id="chip-completed">0</span>
+</h2>
+<p class="shelf-description">Completed · Stories you’ve finished.</p>
+</div>
+</div>
+<div class="row-wrap">
+<button class="row-arrow left" type="button" aria-label="Scroll Mastered left" aria-controls="lane-completed" disabled>‹</button>
+<div class="cards" id="lane-completed" role="region" aria-label="Mastered shows" tabindex="0">
+</div>
+<button class="row-arrow right" type="button" aria-label="Scroll Mastered right" aria-controls="lane-completed" disabled>›</button>
+</div>
+</section>
 </main>
-
 <footer>
-  <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+<span class="footer-mark" aria-hidden="true">✦</span>
+<p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
 </footer>
 
-<!-- ===== Spirit parade creature templates ===== -->
-<template id="tpl-koi">
-  <div class="act act-koi"><div class="bob"><div class="flip">
-    <svg class="sprite koi koi-w" viewBox="0 0 200 90">
-      <g class="k-rock">
-        <g class="k-tail">
-          <path class="k-fill" d="M74 45 C56 30 42 14 18 5 C31 22 36 32 33 41 C35 47 30 58 14 76 C38 66 56 54 74 47 Z"/>
-        </g>
-        <path class="k-fill" d="M188 45 C182 27 162 21 140 23 C114 25 92 35 74 45 C92 55 114 65 140 67 C162 69 182 63 188 45 Z"/>
-        <path class="k-fill" d="M132 24 C127 13 133 3 148 5 C139 10 135 17 134 23 Z"/>
-        <g class="k-fin">
-          <path class="k-fill" d="M154 63 C157 73 166 79 178 77 C169 71 164 66 161 60 Z"/>
-        </g>
-        <ellipse class="k-spot" cx="170" cy="34" rx="10" ry="7" transform="rotate(-14 170 34)"/>
-        <circle class="k-eye" cx="177" cy="45" r="2.6"/>
-      </g>
-    </svg>
-    <svg class="sprite koi koi-b" viewBox="0 0 200 90">
-      <g class="k-rock">
-        <g class="k-tail">
-          <path class="k-fill" d="M74 45 C56 30 42 14 18 5 C31 22 36 32 33 41 C35 47 30 58 14 76 C38 66 56 54 74 47 Z"/>
-        </g>
-        <path class="k-fill" d="M188 45 C182 27 162 21 140 23 C114 25 92 35 74 45 C92 55 114 65 140 67 C162 69 182 63 188 45 Z"/>
-        <path class="k-fill" d="M132 24 C127 13 133 3 148 5 C139 10 135 17 134 23 Z"/>
-        <g class="k-fin">
-          <path class="k-fill" d="M154 63 C157 73 166 79 178 77 C169 71 164 66 161 60 Z"/>
-        </g>
-        <ellipse class="k-spot" cx="170" cy="34" rx="10" ry="7" transform="rotate(-14 170 34)"/>
-        <circle class="k-eye" cx="177" cy="45" r="2.6"/>
-      </g>
-    </svg>
-  </div></div></div>
-</template>
+<dialog id="setup" class="overlay" aria-labelledby="setup-title" aria-describedby="setup-description">
+<div class="panel">
+<div class="dialog-eyebrow">Welcome, traveler</div>
+<h2 id="setup-title">Enter the library</h2>
+<p id="setup-description" class="dialog-description">Connect a free TMDB key to find shows. Your watchlist saves on this device.</p>
+<form id="setup-form" novalidate>
+<div class="field">
+<label for="in-tmdb">TMDB API key <span class="required-label">Required</span>
+</label>
+<p id="in-tmdb-help" class="hint">
+<a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">Get your TMDB developer key ↗</a> · Use the API key (v3 auth).</p>
+<div class="input-with-action">
+<input id="in-tmdb" type="password" autocomplete="off" spellcheck="false" aria-describedby="in-tmdb-help in-tmdb-error" required>
+<button type="button" class="reveal-btn" data-reveal="in-tmdb" aria-label="Show TMDB API key">Show</button>
+</div>
+<p id="in-tmdb-error" class="field-error">
+</p>
+</div>
+<details id="setup-sync" class="optional-section">
+<summary>Sync across devices <span>Optional</span>
+</summary>
+<div class="disclosure-body">
+<p class="hint">Connect GitHub to sync your library through a secret Gist. You can add this later in Settings.</p>
+<div class="field">
+<label for="in-token">GitHub token</label>
+<p id="in-token-help" class="hint">
+<a href="https://github.com/settings/tokens/new?scopes=gist" target="_blank" rel="noopener noreferrer">Create a classic token ↗</a> with only the gist scope.</p>
+<div class="input-with-action">
+<input id="in-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="in-token-help in-token-error">
+<button type="button" class="reveal-btn" data-reveal="in-token" aria-label="Show GitHub token">Show</button>
+</div>
+<p id="in-token-error" class="field-error">
+</p>
+</div>
+<div class="field">
+<label for="in-gist">Existing library ID</label>
+<p class="hint" id="in-gist-help">Paste an ID from another device, or leave blank to create a library.</p>
+<input id="in-gist" type="text" autocomplete="off" spellcheck="false" aria-describedby="in-gist-help in-gist-error">
+<p class="field-error" id="in-gist-error">
+</p>
+</div>
+</div>
+</details>
+<p class="credential-note">Credentials stay in this browser and are sent only to their respective services when needed.</p>
+<div id="setup-msg" class="msg" role="status">
+</div>
+<div class="dialog-actions">
+<button id="btn-setup" class="btn btn-primary" type="submit">Open the library <span aria-hidden="true">→</span>
+</button>
+</div>
+</form>
+</div>
+</dialog>
 
-<template id="tpl-dragon">
-  <div class="act act-dragon"><div class="bob"><div class="flip">
-    <svg class="sprite dragon" viewBox="0 0 380 140">
-      <g class="d-seg s6"><path d="M118 84 C88 82 62 74 40 54 C52 76 82 90 116 90 Z" fill="#2f3c60"/></g>
-      <g class="d-seg s5"><circle cx="128" cy="72" r="18" fill="#2f3c60"/></g>
-      <g class="d-seg s4"><circle cx="154" cy="70" r="19" fill="#2f3c60"/></g>
-      <g class="d-seg s3"><circle cx="181" cy="68" r="20" fill="#2f3c60"/></g>
-      <g class="d-seg s2"><circle cx="209" cy="66" r="20" fill="#2f3c60"/></g>
-      <g class="d-seg s1"><circle cx="237" cy="64" r="20" fill="#2f3c60"/></g>
-      <g class="d-seg s0"><circle cx="264" cy="62" r="20" fill="#2f3c60"/></g>
-      <g class="d-head">
-        <path d="M282 46 C298 34 322 36 334 50 C344 60 344 74 334 82 C320 92 296 92 284 80 C274 70 272 56 282 46 Z" fill="#2f3c60"/>
-        <path d="M334 54 L360 60 C365 64 363 71 356 73 L332 78 Z" fill="#2f3c60"/>
-        <path d="M300 40 C302 24 312 14 328 10 M312 34 C318 24 328 18 340 16" fill="none" stroke="#6d7fb0" stroke-width="5" stroke-linecap="round"/>
-        <path d="M356 64 C372 60 380 48 378 34 M354 70 C368 72 376 82 375 94" fill="none" stroke="#6d7fb0" stroke-width="2.5" stroke-linecap="round"/>
-        <circle class="d-eye" cx="316" cy="58" r="3.4"/>
-      </g>
-    </svg>
-  </div></div></div>
-</template> <template id="tpl-dragon">
-  <div class="act act-dragon"><div class="bob"><div class="flip">
-    <svg class="sprite dragon" viewBox="0 0 380 140">
-      <g class="d-seg s6"><path d="M118 84 C88 82 62 74 40 54 C52 76 82 90 116 90 Z" fill="#2f3c60"/></g>
-      <g class="d-seg s5"><circle cx="128" cy="72" r="18" fill="#2f3c60"/></g>
-      <g class="d-seg s4"><circle cx="154" cy="70" r="19" fill="#2f3c60"/></g>
-      <g class="d-seg s3"><circle cx="181" cy="68" r="20" fill="#2f3c60"/></g>
-      <g class="d-seg s2"><circle cx="209" cy="66" r="20" fill="#2f3c60"/></g>
-      <g class="d-seg s1"><circle cx="237" cy="64" r="20" fill="#2f3c60"/></g>
-      <g class="d-seg s0"><circle cx="264" cy="62" r="20" fill="#2f3c60"/></g>
-      <g class="d-head">
-        <path d="M282 46 C298 34 322 36 334 50 C344 60 344 74 334 82 C320 92 296 92 284 80 C274 70 272 56 282 46 Z" fill="#2f3c60"/>
-        <path d="M334 54 L360 60 C365 64 363 71 356 73 L332 78 Z" fill="#2f3c60"/>
-        <path d="M300 40 C302 24 312 14 328 10 M312 34 C318 24 328 18 340 16" fill="none" stroke="#6d7fb0" stroke-width="5" stroke-linecap="round"/>
-        <path d="M356 64 C372 60 380 48 378 34 M354 70 C368 72 376 82 375 94" fill="none" stroke="#6d7fb0" stroke-width="2.5" stroke-linecap="round"/>
-        <circle class="d-eye" cx="316" cy="58" r="3.4"/>
-      </g>
-    </svg>
-  </div></div></div>
-</template>
+<dialog id="settings" class="overlay" aria-labelledby="settings-title">
+<div class="panel">
+<div class="dialog-title-row">
+<div>
+<div class="dialog-eyebrow">Make yourself at home</div>
+<h2 id="settings-title">Library settings</h2>
+</div>
+<button id="btn-close-settings" class="icon-btn" type="button" aria-label="Close settings">×</button>
+</div>
+<form id="settings-form" novalidate>
+<fieldset class="bg-picker">
+<legend>Scenery</legend>
+<p class="hint">Scenery changes save immediately.</p>
+<label class="radio">
+<input type="radio" name="bg" value="aurora">
+<span>
+<b>The living library</b>
+<span class="hint">Lantern light, quiet shelves, and a watchful keeper.</span>
+</span>
+</label>
+<label class="radio">
+<input type="radio" name="bg" value="backdrops">
+<span>
+<b>Scenes from your shows</b>
+<span class="hint">A slow slideshow. Uses the library when no scenes are available.</span>
+</span>
+</label>
+</fieldset>
+<div class="field">
+<label for="set-tmdb">TMDB API key <span class="required-label">Required</span>
+</label>
+<p id="set-tmdb-help" class="hint">Used to find shows and update episode information.</p>
+<div class="input-with-action">
+<input id="set-tmdb" type="password" autocomplete="off" spellcheck="false" aria-describedby="set-tmdb-help set-tmdb-error" required>
+<button type="button" class="reveal-btn" data-reveal="set-tmdb" aria-label="Show TMDB API key">Show</button>
+</div>
+<p id="set-tmdb-error" class="field-error">
+</p>
+</div>
+<details class="optional-section">
+<summary>Cross-device sync <span>Optional</span>
+</summary>
+<div class="disclosure-body">
+<div class="field">
+<label for="set-gist">Your library ID</label>
+<p class="hint" id="set-gist-help">Copy this ID to connect your library on another device.</p>
+<div class="input-with-action">
+<input id="set-gist" type="text" readonly aria-describedby="set-gist-help set-gist-error">
+<button id="btn-copy-gist" type="button" class="reveal-btn">Copy</button>
+</div>
+<p id="set-gist-error" class="field-error">
+</p>
+</div>
+<div class="field">
+<label for="set-token">GitHub token</label>
+<p id="set-token-help" class="hint">Use a classic token with only the gist scope. Leave blank for this device only.</p>
+<div class="input-with-action">
+<input id="set-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="set-token-help set-token-error">
+<button type="button" class="reveal-btn" data-reveal="set-token" aria-label="Show GitHub token">Show</button>
+</div>
+<p id="set-token-error" class="field-error">
+</p>
+</div>
+<button id="btn-pull" type="button" class="btn btn-secondary">Sync now</button>
+</div>
+</details>
+<p class="credential-note">Credentials are stored in this browser. Scenery and motion preferences stay on this device.</p>
+<div id="settings-msg" class="msg" role="status">
+</div>
+<div class="dialog-actions">
+<button id="btn-save-settings" class="btn btn-primary" type="submit">Save connection settings</button>
+</div>
+</form>
+</div>
+</dialog>
 
-<template id="tpl-moth">
-  <div class="act act-moth"><div class="bob"><div class="flip">
-    <svg class="sprite moth" viewBox="0 0 130 110">
-      <g class="m-wing wl">
-        <path d="M60 52 C36 26 10 24 5 44 C1 62 28 74 58 66 Z" fill="#3d4a78" stroke="#66779f" stroke-width="1.5"/>
-        <path d="M58 68 C38 76 24 88 30 97 C38 104 55 93 61 78 Z" fill="#333f68" stroke="#66779f" stroke-width="1.5"/>
-        <circle class="m-spot" cx="30" cy="48" r="5"/>
-        <circle class="m-spot sm" cx="40" cy="86" r="3"/>
-      </g>
-      <g class="m-wing wr">
-        <path d="M70 52 C94 26 120 24 125 44 C129 62 102 74 72 66 Z" fill="#3d4a78" stroke="#66779f" stroke-width="1.5"/>
-        <path d="M72 68 C92 76 106 88 100 97 C92 104 75 93 69 78 Z" fill="#333f68" stroke="#66779f" stroke-width="1.5"/>
-        <circle class="m-spot" cx="100" cy="48" r="5"/>
-        <circle class="m-spot sm" cx="90" cy="86" r="3"/>
-      </g>
-      <ellipse cx="65" cy="64" rx="8" ry="21" fill="#2b3452" stroke="#66779f" stroke-width="1.5"/>
-      <circle cx="65" cy="42" r="6.5" fill="#2b3452" stroke="#66779f" stroke-width="1.5"/>
-      <path d="M61 38 C55 26 46 20 36 20 M69 38 C75 26 84 20 94 20"
-            fill="none" stroke="#6d7fb0" stroke-width="2.5" stroke-linecap="round"/>
-    </svg>
-  </div></div></div>
-</template>
-
-<template id="tpl-jellies">
-  <div class="act act-jellies"><div class="bobx">
-    <div class="jw j1"><svg class="sprite jelly" viewBox="0 0 80 120">
-      <g class="j-bell">
-        <path d="M10 48 C10 20 70 20 70 48 C70 58 56 63 40 63 C24 63 10 58 10 48 Z" fill="url(#jgrad)"/>
-      </g>
-      <path class="j-t t1" d="M22 62 C20 76 26 88 22 104" />
-      <path class="j-t t2" d="M36 64 C34 80 40 94 36 112" />
-      <path class="j-t t3" d="M52 64 C54 80 48 92 54 108" />
-      <path class="j-t t4" d="M64 60 C66 74 60 84 64 98" />
-      <defs><radialGradient id="jgrad" cx="50%" cy="30%" r="75%">
-        <stop offset="0%" stop-color="#9ff0df" stop-opacity="0.95"/>
-        <stop offset="55%" stop-color="#4aa8a4" stop-opacity="0.6"/>
-        <stop offset="100%" stop-color="#274067" stop-opacity="0.35"/>
-      </radialGradient></defs>
-    </svg></div>
-    <div class="jw j2"><svg class="sprite jelly" viewBox="0 0 80 120">
-      <g class="j-bell">
-        <path d="M10 48 C10 20 70 20 70 48 C70 58 56 63 40 63 C24 63 10 58 10 48 Z" fill="url(#jgrad2)"/>
-      </g>
-      <path class="j-t t1" d="M22 62 C20 76 26 88 22 104" />
-      <path class="j-t t2" d="M36 64 C34 80 40 94 36 112" />
-      <path class="j-t t3" d="M52 64 C54 80 48 92 54 108" />
-      <path class="j-t t4" d="M64 60 C66 74 60 84 64 98" />
-      <defs><radialGradient id="jgrad2" cx="50%" cy="30%" r="75%">
-        <stop offset="0%" stop-color="#cbb0f5" stop-opacity="0.95"/>
-        <stop offset="55%" stop-color="#7e63b8" stop-opacity="0.6"/>
-        <stop offset="100%" stop-color="#2d3567" stop-opacity="0.35"/>
-      </radialGradient></defs>
-    </svg></div>
-    <div class="jw j3"><svg class="sprite jelly" viewBox="0 0 80 120">
-      <g class="j-bell">
-        <path d="M10 48 C10 20 70 20 70 48 C70 58 56 63 40 63 C24 63 10 58 10 48 Z" fill="url(#jgrad3)"/>
-      </g>
-      <path class="j-t t1" d="M22 62 C20 76 26 88 22 104" />
-      <path class="j-t t2" d="M36 64 C34 80 40 94 36 112" />
-      <path class="j-t t4" d="M64 60 C66 74 60 84 64 98" />
-      <defs><radialGradient id="jgrad3" cx="50%" cy="30%" r="75%">
-        <stop offset="0%" stop-color="#9ff0df" stop-opacity="0.9"/>
-        <stop offset="55%" stop-color="#4aa8a4" stop-opacity="0.55"/>
-        <stop offset="100%" stop-color="#274067" stop-opacity="0.3"/>
-      </radialGradient></defs>
-    </svg></div>
-  </div></div>
-</template>
-
-<script src="app.js"></script>
+<dialog id="stats" class="overlay" aria-labelledby="stats-title">
+<div class="panel">
+<div class="dialog-title-row">
+<div>
+<div class="dialog-eyebrow">Your viewing journey</div>
+<h2 id="stats-title">Wan Shi Tong's records</h2>
+</div>
+<button id="btn-close-stats" type="button" class="icon-btn" aria-label="Close statistics">×</button>
+</div>
+<div id="stats-content">
+</div>
+</div>
+</dialog>
+<dialog id="detail" class="overlay" aria-label="Show details" aria-labelledby="detail-title">
+<div class="detail-panel">
+<button id="btn-close-detail" type="button" class="detail-close icon-btn" aria-label="Close show details">×</button>
+<div id="detail-content">
+</div>
+</div>
+</dialog>
+<dialog id="remove-confirm" class="overlay" aria-labelledby="remove-title" aria-describedby="remove-description">
+<div class="panel">
+<div class="dialog-eyebrow">Remove from your library</div>
+<h2 id="remove-title">Remove this show?</h2>
+<p id="remove-description" class="dialog-description">
+</p>
+<div class="dialog-actions">
+<button id="btn-cancel-remove" class="btn btn-secondary" type="button" autofocus>Keep show</button>
+<button id="btn-confirm-remove" class="btn btn-danger" type="button">Remove show</button>
+</div>
+</div>
+</dialog>
+<div id="toasts" aria-live="polite" aria-atomic="false">
+</div>
+<noscript>
+<p class="storage-alert">JavaScript is needed to open your watchlist and save progress.</p>
+</noscript>
+<script src="library-scene.js">
+</script>
+<script src="app.js">
+</script>
 </body>
 </html>
-
-
