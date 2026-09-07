@@ -1,896 +1,588 @@
-/* ===== Wan Shi Tong's Library — app logic ===== */
+/* Wan Shi Tong's Library — local-first watchlist. */
 'use strict';
-
 const TMDB = 'https://api.themoviedb.org/3';
-const IMG  = 'https://image.tmdb.org/t/p/w342';
+const IMG = 'https://image.tmdb.org/t/p/w342';
 const IMG_SM = 'https://image.tmdb.org/t/p/w185';
 const IMG_BD = 'https://image.tmdb.org/t/p/w1280';
 const GIST_FILE = 'watchlist.json';
-
 const ELEMENT = { watching: 'fire', plan: 'air', hold: 'water', completed: 'earth' };
 const STATUS_LABEL = { watching: 'Now Watching', plan: 'Scrolls to Unroll', hold: 'Frozen in Time', completed: 'Mastered' };
-const EP_CHECK_KEY = 'wstl_epcheck';
-const BG_KEY = 'wstl_bg';
-
+const STATUS_DESCRIPTION = { watching: 'In progress', plan: 'Planned', hold: 'On hold', completed: 'Completed' };
+const EP_CHECK_KEY = 'wstl_epcheck', BG_KEY = 'wstl_bg';
+const $ = id => document.getElementById(id);
 let creds = { tmdb: '', token: '', gist: '' };
 let state = { shows: [], lastSync: null };
-let syncTimer = null;
-let detailShowId = null;
+let syncTimer = null, detailShowId = null, pendingRemoval = null;
+let storageFailed = false, stateReadFailed = false;
+// Session-only guards; the persisted watchlist/Gist payload stays unchanged.
+let localRevision = 0, inFlightPushes = 0;
+const adding = new Set(), refreshing = new Set(), dialogOrigins = new WeakMap();
 
-/* ---------- credentials & persistence ---------- */
-function loadCreds() {
-  creds.tmdb  = localStorage.getItem('wstl_tmdb')  || '';
-  creds.token = localStorage.getItem('wstl_token') || '';
-  creds.gist  = localStorage.getItem('wstl_gist')  || '';
+/* A failed library write rolls the edit back and leaves an actionable warning. */
+function storageError() {
+  storageFailed = true;
+  if ($('storage-alert')) {
+    $('storage-alert').classList.remove('hidden');
+    $('storage-alert').hidden = false;
+    $('storage-alert').textContent = 'Your browser could not save changes. Keep this tab open, free some browser storage or allow site data, then retry. The last edit was not saved.';
+  }
+  setSync('storage');
 }
-function saveCreds() {
-  localStorage.setItem('wstl_tmdb',  creds.tmdb);
-  localStorage.setItem('wstl_token', creds.token);
-  localStorage.setItem('wstl_gist',  creds.gist);
+function readLocal(key) { try { return localStorage.getItem(key); } catch (_) { storageError(); return null; } }
+function writeLocal(key, value) { try { localStorage.setItem(key, value); return true; } catch (_) { storageError(); return false; } }
+function loadCreds() { creds = { tmdb: readLocal('wstl_tmdb') || '', token: readLocal('wstl_token') || '', gist: readLocal('wstl_gist') || '' }; }
+function saveCreds(candidate = creds) {
+  const previous = { ...creds }, entries = [['wstl_tmdb', 'tmdb'], ['wstl_token', 'token'], ['wstl_gist', 'gist']];
+  try { entries.forEach(([key, field]) => localStorage.setItem(key, candidate[field])); creds = candidate; return true; }
+  catch (_) {
+    for (const [key, field] of entries) { try { localStorage.setItem(key, previous[field]); } catch (_) { /* warning below */ } }
+    storageError(); return false;
+  }
+}
+function validateState(value) {
+  if (!value || !Array.isArray(value.shows)) throw new Error('This library file is not a supported watchlist.');
+  const ids = new Set();
+  for (const show of value.shows) {
+    if (!Number.isSafeInteger(show.tmdbId) || ids.has(show.tmdbId) || typeof show.name !== 'string' ||
+        !Object.hasOwn(ELEMENT, show.status) || !Array.isArray(show.seasons) ||
+        !Number.isInteger(show.currentSeason) || !Number.isInteger(show.currentEpisode) || show.currentEpisode < 0)
+      throw new Error('This library contains an invalid show. Your local library has been kept.');
+    ids.add(show.tmdbId);
+    for (const season of show.seasons) {
+      if (!Number.isInteger(season.season) || !Array.isArray(season.episodes) || season.episodes.some(ep => !Number.isInteger(ep.ep) || ep.ep < 1))
+        throw new Error('This library contains invalid episode data. Your local library has been kept.');
+    }
+  }
+  return value;
 }
 function loadState() {
-  try { state = JSON.parse(localStorage.getItem('wstl_state')) || state; }
-  catch (e) { /* keep default */ }
+  const raw = readLocal('wstl_state'); if (!raw) return;
+  try { state = validateState(JSON.parse(raw)); }
+  catch (_) {
+    if ($('storage-alert')) {
+      $('storage-alert').classList.remove('hidden');
+      $('storage-alert').hidden = false;
+      $('storage-alert').textContent = 'Your saved library could not be read. Its stored copy has not been changed. Restore a valid watchlist from your synced library before making edits.';
+    }
+    storageFailed = true; stateReadFailed = true;
+  }
 }
 function saveState(push = true) {
-  state.lastSync = new Date().toISOString();
-  localStorage.setItem('wstl_state', JSON.stringify(state));
-  if (push) scheduleSync();
+  if (stateReadFailed) { storageError(); return false; }
+  const previousSync = state.lastSync; state.lastSync = new Date().toISOString();
+  if (!writeLocal('wstl_state', JSON.stringify(state))) { state.lastSync = previousSync; return false; }
+  storageFailed = false; if ($('storage-alert')) $('storage-alert').hidden = true;
+  if (push) scheduleSync(); return true;
+}
+function commitChange(change) {
+  const before = JSON.parse(JSON.stringify(state)); change();
+  if (saveState()) { localRevision++; return true; }
+  state = before; render();
+  const current = state.shows.find(s => s.tmdbId === detailShowId); if (current) renderDetail(current);
+  toast('Change not saved. Resolve the storage message and retry.', true); return false;
+}
+function replaceFromRemote(remote) {
+  if (!remote) return false;
+  const previous = state, readFailure = stateReadFailed;
+  state = validateState(remote); stateReadFailed = false;
+  if (!saveState(false)) { state = previous; stateReadFailed = readFailure; return false; }
+  render(); refreshBackdropPool();
+  if (detailShowId !== null) { const show = state.shows.find(s => s.tmdbId === detailShowId); if (show) renderDetail(show); else closeDetail(); }
+  return true;
+}
+function applyPulledState(remote, startedAtRevision) {
+  if (startedAtRevision !== localRevision || syncTimer || inFlightPushes) {
+    // A pull is a replacement, never a merge: an older response must not erase an edit.
+    setSync(syncTimer || inFlightPushes ? 'busy' : 'err');
+    return false;
+  }
+  return replaceFromRemote(remote);
 }
 
-/* ---------- TMDB ---------- */
-async function tmdbSearch(query) {
-  const url = `${TMDB}/search/tv?api_key=${encodeURIComponent(creds.tmdb)}&query=${encodeURIComponent(query)}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('TMDB search failed (' + r.status + ')');
-  return (await r.json()).results || [];
-}
-async function tmdbShow(id) {
-  const r = await fetch(`${TMDB}/tv/${id}?api_key=${encodeURIComponent(creds.tmdb)}`);
-  if (!r.ok) throw new Error('TMDB show lookup failed');
-  return r.json();
-}
-async function tmdbSeason(id, n) {
-  const r = await fetch(`${TMDB}/tv/${id}/season/${n}?api_key=${encodeURIComponent(creds.tmdb)}`);
-  if (!r.ok) throw new Error('TMDB season lookup failed');
-  return r.json();
-}
-async function fetchSeasons(tmdbId, info) {
-  const realSeasons = (info.seasons || []).filter(s => s.season_number >= 1 && s.episode_count > 0);
-  const seasons = [];
-  for (const s of realSeasons) {
-    const sd = await tmdbSeason(tmdbId, s.season_number);
-    seasons.push({
-      season: s.season_number,
-      episodes: (sd.episodes || []).map(e => ({ ep: e.episode_number, name: e.name || '' }))
-    });
+/* Error messages omit request URLs, which contain the TMDB key. */
+class ServiceError extends Error {
+  constructor(service, status) {
+    const auth = status === 401 || status === 403;
+    super(service === 'TMDB'
+      ? (auth ? 'TMDB rejected the API key. Check your v3 API key in Settings.' : status === 429 ? 'TMDB is busy. Wait a moment and try again.' : 'TMDB could not complete the request. Please try again.')
+      : (auth ? 'GitHub rejected the token. Check its access and gist permission.' : status === 404 ? 'That library was not found. Check the Library ID and token access.' : 'GitHub could not complete the sync. Please try again.'));
+    this.status = status; this.service = service;
   }
-  seasons.sort((a, b) => a.season - b.season);
-  return seasons;
+}
+function errorMessage(error) {
+  if (error instanceof ServiceError) return error.message;
+  if (error instanceof TypeError) return 'Could not connect. Check your internet connection and try again.';
+  return error.message || 'Something went wrong. Please try again.';
+}
+async function tmdbGet(path, signal) {
+  const join = path.includes('?') ? '&' : '?';
+  const response = await fetch(`${TMDB}${path}${join}api_key=${encodeURIComponent(creds.tmdb)}`, { signal });
+  if (!response.ok) throw new ServiceError('TMDB', response.status); return response.json();
+}
+async function tmdbSearch(query, signal) { return (await tmdbGet('/search/tv?query=' + encodeURIComponent(query), signal)).results || []; }
+function tmdbShow(id) { return tmdbGet('/tv/' + id); }
+function tmdbSeason(id, n) { return tmdbGet('/tv/' + id + '/season/' + n); }
+async function fetchSeasons(tmdbId, info) {
+  const seasons = [];
+  for (const s of (info.seasons || []).filter(s => s.season_number >= 1 && s.episode_count > 0)) {
+    const data = await tmdbSeason(tmdbId, s.season_number);
+    seasons.push({ season: s.season_number, episodes: (data.episodes || []).map(e => ({ ep: e.episode_number, name: e.name || '' })) });
+  }
+  return seasons.sort((a, b) => a.season - b.season);
 }
 function extraFields(info) {
-  return {
-    backdrop: info.backdrop_path ? IMG_BD + info.backdrop_path : '',
-    overview: info.overview || '',
-    runtime: (info.episode_run_time && info.episode_run_time.length)
-      ? Math.round(info.episode_run_time.reduce((a, b) => a + b, 0) / info.episode_run_time.length)
-      : 40,
-    totalEps: info.number_of_episodes || 0
-  };
+  const times = info.episode_run_time || [];
+  return { backdrop: info.backdrop_path ? IMG_BD + info.backdrop_path : '', overview: info.overview || '',
+    runtime: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 40, totalEps: info.number_of_episodes || 0 };
 }
 
-/* ---------- GitHub Gist sync ---------- */
-function ghHeaders() {
-  return {
-    'Authorization': 'Bearer ' + creds.token,
-    'Accept': 'application/vnd.github+json',
-    'Content-Type': 'application/json'
-  };
+/* Existing Gist payload and storage keys are intentionally preserved. */
+function ghHeaders(credentials = creds) {
+  return { Authorization: 'Bearer ' + credentials.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' };
 }
-async function gistCreate() {
-  const r = await fetch('https://api.github.com/gists', {
-    method: 'POST', headers: ghHeaders(),
-    body: JSON.stringify({
-      description: "Wan Shi Tong's Library — watchlist data",
-      public: false,
-      files: { [GIST_FILE]: { content: JSON.stringify(state, null, 2) } }
-    })
-  });
-  if (!r.ok) throw new Error('Could not create library (' + r.status + ')');
-  return (await r.json()).id;
+async function gistCreate(credentials = creds, library = state) {
+  const response = await fetch('https://api.github.com/gists', { method: 'POST', headers: ghHeaders(credentials),
+    body: JSON.stringify({ description: "Wan Shi Tong's Library — watchlist data", public: false, files: { [GIST_FILE]: { content: JSON.stringify(library, null, 2) } } }) });
+  if (!response.ok) throw new ServiceError('GitHub', response.status); return (await response.json()).id;
 }
 async function gistPush() {
   if (!creds.token || !creds.gist) return;
-  const r = await fetch('https://api.github.com/gists/' + creds.gist, {
-    method: 'PATCH', headers: ghHeaders(),
-    body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(state, null, 2) } } })
-  });
-  if (!r.ok) throw new Error('Push failed (' + r.status + ')');
+  inFlightPushes++;
+  try {
+    const response = await fetch('https://api.github.com/gists/' + encodeURIComponent(creds.gist), { method: 'PATCH', headers: ghHeaders(), body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(state, null, 2) } } }) });
+    if (!response.ok) throw new ServiceError('GitHub', response.status);
+  } finally { inFlightPushes--; }
 }
-async function gistPull() {
-  if (!creds.token || !creds.gist) return null;
-  const r = await fetch('https://api.github.com/gists/' + creds.gist, { headers: ghHeaders() });
-  if (!r.ok) throw new Error('Pull failed (' + r.status + ')');
-  const data = await r.json();
-  const file = data.files && data.files[GIST_FILE];
-  if (!file || !file.content) return null;
-  return JSON.parse(file.content);
+async function gistPull(credentials = creds) {
+  if (!credentials.token || !credentials.gist) return null;
+  const response = await fetch('https://api.github.com/gists/' + encodeURIComponent(credentials.gist), { headers: ghHeaders(credentials) });
+  if (!response.ok) throw new ServiceError('GitHub', response.status);
+  const data = await response.json(), file = data.files && data.files[GIST_FILE];
+  if (!file || !file.content) throw new Error('That Gist does not contain watchlist.json. Check your Library ID.');
+  return validateState(JSON.parse(file.content));
 }
 function scheduleSync() {
-  if (!creds.token || !creds.gist) { setSync('local'); return; }
-  setSync('busy');
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(async () => {
-    try { await gistPush(); setSync('ok'); }
-    catch (e) { setSync('err'); console.error(e); }
+  if (!creds.token || !creds.gist) { syncTimer = null; setSync('local'); return; }
+  setSync('busy'); syncTimer = setTimeout(async () => {
+    syncTimer = null; try { await gistPush(); setSync(syncTimer || inFlightPushes ? 'busy' : 'ok'); } catch (_) { setSync('err'); }
   }, 1400);
 }
-function setSync(s) {
-  const el = document.getElementById('sync-status');
-  el.className = 'sync-status ' + s;
-  el.title = { ok: 'Synced', busy: 'Syncing…', err: 'Sync error — changes saved locally',
-               local: 'Local only — no sync token' }[s] || '';
+function setSync(value) {
+  const el = $('sync-status'); if (!el) return; if (storageFailed) value = 'storage';
+  const labels = { ok: 'Synced', busy: 'Syncing…', err: 'Sync needs attention', local: 'Saved on this device', storage: 'Not saved' };
+  const descriptions = { ok: 'Library synced to GitHub. Open settings.', busy: 'Saving your library to GitHub. Open settings.', err: 'Sync failed; changes remain saved on this device. Open settings to retry.', local: 'Library is stored on this device. Open settings for optional sync.', storage: 'Browser storage failed. Check the storage message.' };
+  el.className = 'sync-status ' + value; el.textContent = labels[value] || labels.local; el.title = descriptions[value]; el.setAttribute('aria-label', descriptions[value]);
 }
 
-/* ---------- episode logic ---------- */
-function seasonOf(show, n) { return show.seasons.find(s => s.season === n); }
-
-function upNext(show) {
-  const s = seasonOf(show, show.currentSeason);
-  if (!s) return null;
-  if (show.currentEpisode < s.episodes.length) {
-    const ep = show.currentEpisode + 1;
-    return { season: show.currentSeason, ep, name: s.episodes[ep - 1] ? s.episodes[ep - 1].name : '' };
-  }
-  const next = show.seasons
-    .filter(x => x.season > show.currentSeason && x.episodes.length)
-    .sort((a, b) => a.season - b.season)[0];
-  if (next) return { season: next.season, ep: 1, name: next.episodes[0] ? next.episodes[0].name : '' };
-  return null;
-}
-function totalEpisodes(show) { return show.seasons.reduce((t, s) => t + s.episodes.length, 0); }
-function watchedCount(show) {
-  let c = 0;
-  for (const s of show.seasons) {
-    if (s.season < show.currentSeason) c += s.episodes.length;
-    else if (s.season === show.currentSeason) c += show.currentEpisode;
-  }
-  return c;
-}
+/* Sequential watched-through progress, including boundaries between seasons. */
+function episodeList(show) { return show.seasons.slice().sort((a, b) => a.season - b.season).flatMap(s => s.episodes.map(e => ({ season: s.season, ep: e.ep, name: e.name || '' }))); }
+function upNext(show) { return episodeList(show).find(e => e.season > show.currentSeason || (e.season === show.currentSeason && e.ep > show.currentEpisode)) || null; }
+function totalEpisodes(show) { return show.seasons.reduce((sum, s) => sum + s.episodes.length, 0); }
+function watchedCount(show) { return episodeList(show).filter(e => e.season < show.currentSeason || (e.season === show.currentSeason && e.ep <= show.currentEpisode)).length; }
 function episodeText(show) {
-  const next = upNext(show);
-  const total = totalEpisodes(show);
-  if (show.currentEpisode === 0 && watchedCount(show) === 0 && next)
-    return { line: 'Not started',
-      name: 'Up next: S' + next.season + ' · E' + next.ep + (next.name ? ' — ' + next.name : '') };
-  if (next)
-    return { line: 'Watched: S' + show.currentSeason + ' · E' + show.currentEpisode,
-      name: 'Up next: S' + next.season + ' · E' + next.ep + (next.name ? ' — ' + next.name : '') };
-  return { line: 'Series complete', name: 'All ' + total + ' episodes watched' };
+  const next = upNext(show), total = totalEpisodes(show), done = watchedCount(show);
+  if (!total) return { line: 'No episode data yet', name: 'Refresh details when episodes are available' };
+  const line = done ? `Watched through S${show.currentSeason} E${show.currentEpisode}` : 'Not started';
+  return next ? { line, name: `Next: S${next.season} E${next.ep}${next.name ? ' — ' + next.name : ''}` } : { line: 'Caught up', name: `All ${total} available episodes watched` };
 }
-function applyProgressStatus(show) {
-  if (!upNext(show)) show.status = 'completed';
-  else if (show.status === 'completed') show.status = 'watching';
-}
+function applyProgressStatus(show) { if (totalEpisodes(show) && !upNext(show)) show.status = 'completed'; else if (show.status === 'completed') show.status = 'watching'; }
+function updated(show) { show.updatedAt = new Date().toISOString(); }
 function markWatched(show) {
-  const n = upNext(show);
-  if (!n) return;
-  const wasStatus = show.status;
-  const wasFirst = watchedCount(show) === 0;
-  show.currentSeason = n.season;
-  show.currentEpisode = n.ep;
-  show.updatedAt = new Date().toISOString();
-  applyProgressStatus(show);
-  saveState();
-  if (show.status !== wasStatus || wasFirst) render();
-  else updateCardInPlace(show);
-  refreshDetailIfOpen(show);
+  const next = upNext(show); if (!next) return;
+  if (!commitChange(() => { show.currentSeason = next.season; show.currentEpisode = next.ep; updated(show); applyProgressStatus(show); })) return;
+  render(); refreshDetailIfOpen(show); toast(`Marked ${show.name}: S${next.season} E${next.ep} watched.`);
 }
 function stepBack(show) {
-  const wasStatus = show.status;
-  if (show.currentEpisode > 0) {
-    show.currentEpisode--;
-  } else {
-    const prev = show.seasons
-      .filter(x => x.season < show.currentSeason && x.episodes.length)
-      .sort((a, b) => b.season - a.season)[0];
-    if (prev) { show.currentSeason = prev.season; show.currentEpisode = prev.episodes.length; }
-  }
-  if (show.status === 'completed') show.status = 'watching';
-  show.updatedAt = new Date().toISOString();
-  saveState();
-  if (show.status !== wasStatus || watchedCount(show) === 0) render();
-  else updateCardInPlace(show);
-  refreshDetailIfOpen(show);
+  const list = episodeList(show), done = watchedCount(show); if (!done) return; const previous = list[done - 2];
+  if (!commitChange(() => { show.currentSeason = previous ? previous.season : (list[0] ? list[0].season : 1); show.currentEpisode = previous ? previous.ep : 0; if (show.status === 'completed') show.status = 'watching'; updated(show); })) return;
+  render(); refreshDetailIfOpen(show);
 }
 function setEpisodeTo(show, season, ep) {
-  show.currentSeason = season;
-  show.currentEpisode = ep;
-  show.updatedAt = new Date().toISOString();
-  applyProgressStatus(show);
-  saveState();
-  render();
-  refreshDetailIfOpen(show);
+  if (!commitChange(() => { show.currentSeason = season; show.currentEpisode = ep; updated(show); applyProgressStatus(show); })) return;
+  render(); refreshDetailIfOpen(show); toast(`Marked watched through S${season} E${ep}. All earlier episodes are included.`);
 }
-
-/* ---------- mutations ---------- */
-async function addShow(tmdbId) {
-  if (state.shows.some(s => s.tmdbId === tmdbId)) { toast('That show is already in your library.', true); return; }
-  setSync('busy');
+async function addShow(tmdbId, button) {
+  const existing = state.shows.find(s => s.tmdbId === tmdbId); if (existing) { openDetail(existing); return; }
+  if (adding.has(tmdbId)) return; adding.add(tmdbId); if (button) { button.disabled = true; button.textContent = 'Adding…'; }
   try {
-    const info = await tmdbShow(tmdbId);
-    const seasons = await fetchSeasons(tmdbId, info);
-    state.shows.push(Object.assign({
-      tmdbId,
-      name: info.name,
-      poster: info.poster_path ? IMG + info.poster_path : '',
-      status: 'watching',
-      currentSeason: seasons.length ? seasons[0].season : 1,
-      currentEpisode: 0,
-      seasons,
-      rating: null,
-      hasNew: false,
-      updatedAt: new Date().toISOString()
-    }, extraFields(info)));
-    saveState(); render();
-    setSync(creds.gist ? 'ok' : 'local');
-    toast('"' + info.name + '" added to your library.');
-    refreshBackdropPool();
-  } catch (e) {
-    setSync('err'); toast('Could not add show: ' + e.message, true);
-  }
+    const info = await tmdbShow(tmdbId), seasons = await fetchSeasons(tmdbId, info); if (state.shows.some(s => s.tmdbId === tmdbId)) return;
+    const show = Object.assign({ tmdbId, name: info.name || 'Untitled show', poster: info.poster_path ? IMG + info.poster_path : '', status: 'watching', currentSeason: seasons.length ? seasons[0].season : 1, currentEpisode: 0, seasons, rating: null, hasNew: false, updatedAt: new Date().toISOString() }, extraFields(info));
+    if (!commitChange(() => state.shows.push(show))) return;
+    render(); refreshBackdropPool(); toast('“' + show.name + '” added to Now Watching.'); hideSearch(); $('search').value = ''; updateSearchClear();
+    requestAnimationFrame(() => document.querySelector(`.pcard[data-id="${tmdbId}"] .p-open`)?.focus());
+  } catch (error) { toast('Could not add show. ' + errorMessage(error), true); }
+  finally { adding.delete(tmdbId); if (button?.isConnected) { button.disabled = false; button.textContent = state.shows.some(s => s.tmdbId === tmdbId) ? 'Already in library' : 'Add'; } }
 }
-function moveStatus(show, status) {
-  show.status = status;
-  show.updatedAt = new Date().toISOString();
-  saveState(); render();
-  refreshDetailIfOpen(show);
-}
+function moveStatus(show, status) { if (!Object.hasOwn(ELEMENT, status) || !commitChange(() => { show.status = status; updated(show); })) return; render(); refreshDetailIfOpen(show); }
 function removeShow(show) {
-  state.shows = state.shows.filter(s => s !== show);
-  saveState(); render();
-  closeDetail();
-  toast('"' + show.name + '" removed.');
-  refreshBackdropPool();
+  if (!commitChange(() => { state.shows = state.shows.filter(s => s.tmdbId !== show.tmdbId); })) return;
+  closeDialog($('remove-confirm')); pendingRemoval = null; closeDetail(); render(); refreshBackdropPool(); toast('“' + show.name + '” removed from your library.');
 }
-function setRating(show, n) {
-  show.rating = (show.rating === n) ? null : n;
-  show.updatedAt = new Date().toISOString();
-  saveState(); render();
-  refreshDetailIfOpen(show);
-}
+function setRating(show, n) { if (!commitChange(() => { show.rating = show.rating === n ? null : n; updated(show); })) return; render(); refreshDetailIfOpen(show); }
 async function refreshShowData(show) {
+  if (refreshing.has(show.tmdbId)) return; refreshing.add(show.tmdbId); refreshDetailIfOpen(show);
   try {
-    toast('Consulting the archives for "' + show.name + '"…');
-    const info = await tmdbShow(show.tmdbId);
-    show.seasons = await fetchSeasons(show.tmdbId, info);
-    Object.assign(show, extraFields(info));
-    show.name = info.name || show.name;
-    if (info.poster_path) show.poster = IMG + info.poster_path;
-    show.hasNew = false;
-    if (show.status === 'completed' && upNext(show)) show.status = 'watching';
-    show.updatedAt = new Date().toISOString();
-    saveState(); render();
-    refreshDetailIfOpen(show);
-    toast('"' + show.name + '" is up to date.');
-    refreshBackdropPool();
-  } catch (e) {
-    toast('Refresh failed: ' + e.message, true);
-  }
+    const info = await tmdbShow(show.tmdbId), seasons = await fetchSeasons(show.tmdbId, info); if (!state.shows.includes(show)) return;
+    if (!commitChange(() => { show.seasons = seasons; Object.assign(show, extraFields(info)); show.name = info.name || show.name; if (info.poster_path) show.poster = IMG + info.poster_path; show.hasNew = false; if (show.status === 'completed' && upNext(show)) show.status = 'watching'; updated(show); })) return;
+    render(); refreshBackdropPool(); toast('“' + show.name + '” is up to date.');
+  } catch (error) { toast('Refresh failed. ' + errorMessage(error), true); }
+  finally { refreshing.delete(show.tmdbId); refreshDetailIfOpen(show); }
 }
-
-/* ---------- migration: backfill fields added by the redesign ---------- */
 async function migrate() {
-  if (!creds.tmdb) return;
-  const missing = state.shows.filter(s => s.backdrop === undefined || s.totalEps === undefined);
-  if (!missing.length) return;
-  let changed = 0;
-  for (const show of missing) {
-    try {
-      const info = await tmdbShow(show.tmdbId);
-      Object.assign(show, extraFields(info));
-      changed++;
-    } catch (e) { /* try again next load */ }
+  if (!creds.tmdb || stateReadFailed) return;
+  for (const show of state.shows.filter(s => s.backdrop === undefined || s.totalEps === undefined)) {
+    try { const fields = extraFields(await tmdbShow(show.tmdbId)); if (state.shows.includes(show)) commitChange(() => Object.assign(show, fields)); } catch (_) { /* retry next load */ }
   }
-  if (changed) { saveState(); render(); refreshBackdropPool(); }
+  render(); refreshBackdropPool();
 }
-
-/* ---------- new-episode check (max once per 24h) ---------- */
 async function checkNewEpisodes() {
-  if (!creds.tmdb || !state.shows.length) return;
-  const last = Number(localStorage.getItem(EP_CHECK_KEY) || 0);
-  if (Date.now() - last < 24 * 3600 * 1000) return;
-  localStorage.setItem(EP_CHECK_KEY, String(Date.now()));
+  if (!creds.tmdb || !state.shows.length || stateReadFailed) return;
+  const last = Number(readLocal(EP_CHECK_KEY) || 0); if (Date.now() - last < 24 * 3600 * 1000 || !writeLocal(EP_CHECK_KEY, String(Date.now()))) return;
   let found = 0;
   for (const show of state.shows) {
-    if (typeof show.totalEps !== 'number' || !show.totalEps) continue;
-    try {
-      const info = await tmdbShow(show.tmdbId);
-      const now = info.number_of_episodes || 0;
-      if (now > show.totalEps && !show.hasNew) { show.hasNew = true; found++; }
-    } catch (e) { /* skip quietly */ }
+    if (!show.totalEps) continue;
+    try { const info = await tmdbShow(show.tmdbId); if ((info.number_of_episodes || 0) > show.totalEps && !show.hasNew && state.shows.includes(show) && commitChange(() => { show.hasNew = true; })) found++; } catch (_) { /* background metadata checks do not block viewing */ }
   }
-  if (found) {
-    saveState(); render();
-    toast(found === 1 ? 'A new scroll has arrived in your library.' : found + ' new scrolls have arrived.');
-  }
+  if (found) { render(); toast(`${found} ${found === 1 ? 'show has' : 'shows have'} new episodes available.`); }
 }
 
-/* ---------- rendering ---------- */
+/* External text is escaped; images are restricted to HTTP(S). */
+function esc(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function imageUrl(value) {
+  if (!value) return '';
+  try { const url = new URL(value, location.href); return ['http:', 'https:'].includes(url.protocol) ? url.href : ''; } catch (_) { return ''; }
+}
+function mkBtn(label, cls = 'btn btn-secondary') { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label; return b; }
 function render() {
+  const focused = document.activeElement, focusId = focused?.closest('.pcard')?.dataset.id;
+  const focusClass = focused?.classList.contains('p-watch') ? '.p-watch' : '.p-open';
   for (const status of Object.keys(ELEMENT)) {
-    const lane = document.getElementById('lane-' + status);
-    const chip = document.getElementById('chip-' + status);
-    const shows = state.shows.filter(s => s.status === status);
-    chip.textContent = shows.length || '';
-    lane.innerHTML = '';
+    const lane = $('lane-' + status), chip = $('chip-' + status), shows = state.shows.filter(s => s.status === status), scroll = lane.scrollLeft;
+    if (chip) { chip.textContent = shows.length; chip.setAttribute('aria-label', `${shows.length} ${shows.length === 1 ? 'show' : 'shows'}`); }
+    const section = lane.closest('.shelf');
+    section?.querySelectorAll('.shelf-count').forEach(el => { el.textContent = `${shows.length} ${shows.length === 1 ? 'show' : 'shows'}`; });
+    const desc = section?.querySelector('.shelf-description'); if (desc) desc.textContent = STATUS_DESCRIPTION[status];
+    lane.replaceChildren();
     if (!shows.length) {
-      const d = document.createElement('div');
-      d.className = 'shelf-empty';
-      d.textContent = { watching: 'Nothing being watched yet — search above.',
-        plan: 'No scrolls waiting.', hold: 'Nothing frozen.',
-        completed: 'No shows mastered yet.' }[status];
-      lane.appendChild(d);
-    } else {
-      shows.forEach((show, i) => lane.appendChild(renderCard(show, i)));
-    }
+      const empty = document.createElement('div'); empty.className = 'shelf-empty'; const text = document.createElement('p');
+      text.textContent = { watching: 'Your next story starts here.', plan: 'Keep the shows you want to watch next.', hold: 'A place for stories you will return to.', completed: 'Finished shows will find their home here.' }[status];
+      const button = mkBtn(status === 'watching' ? 'Find your first show' : 'Find a show', 'btn btn-secondary empty-action');
+      button.onclick = () => { $('search').focus(); $('search').scrollIntoView({ block: 'center', behavior: motionAllowed() ? 'smooth' : 'instant' }); };
+      empty.append(text, button); lane.append(empty);
+    } else shows.forEach(show => lane.append(renderCard(show)));
+    lane.scrollLeft = scroll;
   }
+  if (focusId && !focused.isConnected) { const card = document.querySelector(`.pcard[data-id="${focusId}"]`); (card?.querySelector(focusClass) || card?.querySelector('.p-open'))?.focus({ preventScroll: true }); }
   requestAnimationFrame(updateRowOverflow);
 }
-
-function renderCard(show, idx) {
-  const el = ELEMENT[show.status];
-  const card = document.createElement('div');
-  card.className = 'pcard el-' + el;
-  card.dataset.id = show.tmdbId;
-  card.tabIndex = 0;
-  card.style.animationDelay = (Math.min(idx || 0, 12) * 0.045) + 's';
-
-  const next = upNext(show);
-  const total = totalEpisodes(show);
-  const done = watchedCount(show);
-  const pct = total ? Math.round(done / total * 100) : 0;
-  const et = episodeText(show);
-
-  card.innerHTML = `
-    ${show.poster
-      ? `<img class="poster" src="${show.poster}" alt="" loading="lazy">`
-      : `<div class="p-fallback">${esc(show.name)}</div>`}
-    ${show.hasNew ? '<span class="badge-new">NEW</span>' : ''}
-    <div class="p-overlay">
-      <div class="p-name">${esc(show.name)}</div>
-      <div class="p-next">${esc(et.name)}</div>
-      ${next ? '<button class="p-watch">&#9654; Watched</button>' : ''}
-    </div>
-    <div class="p-progress"><i style="width:${pct}%"></i></div>`;
-
-  const watch = card.querySelector('.p-watch');
-  if (watch) watch.onclick = e => { e.stopPropagation(); bendPress(watch); markWatched(show); };
-  card.onclick = () => openDetail(show);
-  card.onkeydown = e => { if (e.key === 'Enter') openDetail(show); };
+function renderCard(show) {
+  const card = document.createElement('article'); card.className = 'pcard el-' + ELEMENT[show.status]; card.dataset.id = show.tmdbId;
+  const next = upNext(show), total = totalEpisodes(show), done = watchedCount(show), pct = total ? Math.round(done / total * 100) : 0, poster = imageUrl(show.poster);
+  card.innerHTML = `<button type="button" class="p-open" aria-label="Open details for ${esc(show.name)}">
+    <span class="p-art">${poster ? `<img class="poster" src="${esc(poster)}" alt="" loading="lazy">` : '<span class="p-fallback" aria-hidden="true">WST<br>LIBRARY</span>'}${show.hasNew ? '<span class="badge-new">New episodes</span>' : ''}</span>
+    <span class="p-overlay"><span class="p-name">${esc(show.name)}</span><span class="p-next">${esc(episodeText(show).name)}</span><span class="p-count">${done} / ${total} episodes · ${pct}%</span></span>
+    </button><div class="p-progress" role="progressbar" aria-label="${esc(show.name)} episode progress" aria-valuenow="${done}" aria-valuemin="0" aria-valuemax="${total || 1}"><i style="width:${pct}%"></i></div>`;
+  card.querySelector('.p-open').onclick = () => openDetail(show);
+  const img = card.querySelector('img');
+  if (img) img.onerror = () => { const fallback = document.createElement('span'); fallback.className = 'p-fallback'; fallback.setAttribute('aria-hidden', 'true'); fallback.textContent = 'WST LIBRARY'; img.replaceWith(fallback); };
+  if (next) { const watch = mkBtn(`Mark S${next.season} E${next.ep} watched`, 'p-watch btn btn-primary'); watch.setAttribute('aria-label', `Mark ${show.name}, S${next.season} E${next.ep} watched`); watch.onclick = () => markWatched(show); card.append(watch); }
+  else { const label = document.createElement('div'); label.className = 'p-caught-up'; label.textContent = total ? '✓ Caught up' : 'No episodes listed'; card.append(label); }
   return card;
 }
-
-function esc(s) {
-  return String(s).replace(/[&<>"]/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
-/* in-place card update — animates progress without a full re-render */
-function updateCardInPlace(show) {
-  const card = document.querySelector('.pcard[data-id="' + show.tmdbId + '"]');
-  if (!card) { render(); return; }
-  const t = episodeText(show);
-  const total = totalEpisodes(show);
-  const done = watchedCount(show);
-  const pct = total ? Math.round(done / total * 100) : 0;
-  card.querySelector('.p-next').textContent = t.name;
-  card.querySelector('.p-progress > i').style.width = pct + '%';
-  const watch = card.querySelector('.p-watch');
-  if (watch && !upNext(show)) watch.remove();
-  animatePop(card);
-}
-function animatePop(card) {
-  card.animate(
-    [ { boxShadow: '0 0 0 rgba(0,0,0,0)' },
-      { boxShadow: '0 0 30px rgba(240,147,43,0.8)', offset: 0.35 },
-      { boxShadow: '0 0 0 rgba(0,0,0,0)' } ],
-    { duration: 480, easing: 'ease-out' }
-  );
-}
-function bendPress(btn) {
-  btn.animate(
-    [ { transform: 'scale(1)',    filter: 'brightness(1)' },
-      { transform: 'scale(1.14)', filter: 'brightness(1.45)', offset: 0.4 },
-      { transform: 'scale(1)',    filter: 'brightness(1)' } ],
-    { duration: 330, easing: 'cubic-bezier(0.34,1.56,0.64,1)' }
-  );
-}
-
-/* row overflow: edge fades + arrows only when scrollable */
+function motionAllowed() { return !matchMedia('(prefers-reduced-motion: reduce)').matches && readLocal('wstl_motion') !== 'paused'; }
 function updateRowOverflow() {
   document.querySelectorAll('.row-wrap').forEach(wrap => {
-    const lane = wrap.querySelector('.cards');
-    wrap.classList.toggle('has-overflow', lane.scrollWidth > lane.clientWidth + 4);
+    const lane = wrap.querySelector('.cards'), max = lane.scrollWidth - lane.clientWidth; wrap.classList.toggle('has-overflow', max > 4);
+    const left = wrap.querySelector('.row-arrow.left'), right = wrap.querySelector('.row-arrow.right');
+    if (left) left.disabled = lane.scrollLeft <= 2; if (right) right.disabled = lane.scrollLeft >= max - 2;
   });
 }
 function initRows() {
   document.querySelectorAll('.row-wrap').forEach(wrap => {
     const lane = wrap.querySelector('.cards');
-    wrap.querySelector('.row-arrow.left').onclick  = () => lane.scrollBy({ left: -lane.clientWidth * 0.8, behavior: 'smooth' });
-    wrap.querySelector('.row-arrow.right').onclick = () => lane.scrollBy({ left:  lane.clientWidth * 0.8, behavior: 'smooth' });
+    wrap.querySelector('.row-arrow.left').onclick = () => lane.scrollBy({ left: -lane.clientWidth * .8, behavior: motionAllowed() ? 'smooth' : 'instant' });
+    wrap.querySelector('.row-arrow.right').onclick = () => lane.scrollBy({ left: lane.clientWidth * .8, behavior: motionAllowed() ? 'smooth' : 'instant' });
+    lane.addEventListener('scroll', updateRowOverflow, { passive: true });
   });
   window.addEventListener('resize', updateRowOverflow);
 }
 
-/* ---------- show detail modal ---------- */
-function openDetail(show) {
-  detailShowId = show.tmdbId;
-  renderDetail(show);
-  document.getElementById('detail').classList.remove('hidden');
+/* Native dialogs provide focus containment and inert background content. */
+function openDialog(dialog) {
+  if (dialog.open) return;
+  const active = document.activeElement; dialogOrigins.set(dialog, { element: active, showId: active?.closest('.pcard')?.dataset.id });
+  dialog.classList.remove('hidden'); dialog.showModal(); document.body.classList.add('modal-open');
 }
-function closeDetail() {
-  detailShowId = null;
-  document.getElementById('detail').classList.add('hidden');
+function closeDialog(dialog) { if (dialog.open) dialog.close(); }
+function initModals() {
+  document.querySelectorAll('dialog').forEach(dialog => {
+    dialog.addEventListener('cancel', event => { if (dialog.id === 'setup' && !creds.tmdb) event.preventDefault(); });
+    dialog.addEventListener('click', event => {
+      if (event.target !== dialog || dialog.id === 'setup') return;
+      const rect = dialog.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeDialog(dialog);
+    });
+    dialog.addEventListener('close', () => {
+      if (dialog.id === 'detail') detailShowId = null; if (dialog.id === 'remove-confirm') pendingRemoval = null;
+      const open = [...document.querySelectorAll('dialog[open]')]; document.body.classList.toggle('modal-open', open.length > 0);
+      const origin = dialogOrigins.get(dialog), fallback = (origin?.showId ? document.querySelector(`.pcard[data-id="${origin.showId}"] .p-open`) : null) || $('search');
+      let target = origin?.element?.isConnected ? origin.element : fallback;
+      if (target?.closest('.hidden, [hidden]') || (target?.closest('dialog') && !target.closest('dialog').open)) target = fallback;
+      if (target && (!open.length || open[open.length - 1].contains(target))) target.focus({ preventScroll: true });
+    });
+  });
+  $('btn-close-detail').onclick = closeDetail; $('btn-stats').onclick = openStats; $('btn-close-stats').onclick = () => closeDialog($('stats'));
+  $('btn-close-settings').onclick = () => closeDialog($('settings'));
+  $('btn-cancel-remove').onclick = () => closeDialog($('remove-confirm'));
+  $('btn-confirm-remove').onclick = () => { const show = state.shows.find(s => s.tmdbId === pendingRemoval); if (show) removeShow(show); };
 }
+function openDetail(show) { detailShowId = show.tmdbId; hideSearch(); renderDetail(show); openDialog($('detail')); }
+function closeDetail() { closeDialog($('detail')); detailShowId = null; }
 function refreshDetailIfOpen(show) {
-  if (detailShowId === show.tmdbId && state.shows.includes(show)) renderDetail(show);
+  if (detailShowId !== show.tmdbId) return;
+  // Storage rollback replaces object identities; always render the current saved object.
+  const current = state.shows.find(item => item.tmdbId === show.tmdbId);
+  if (current) renderDetail(current);
+}
+function requestRemoval(show) {
+  pendingRemoval = show.tmdbId; $('remove-title').textContent = 'Remove “' + show.name + '”?';
+  $('remove-description').textContent = 'This removes the show, its episode progress, and your rating from this library. You can add the show again, but its progress will start over.';
+  $('btn-confirm-remove').textContent = 'Remove show'; openDialog($('remove-confirm')); $('btn-cancel-remove').focus();
 }
 function renderDetail(show) {
-  const el = ELEMENT[show.status];
-  const box = document.getElementById('detail-content');
-  const total = totalEpisodes(show);
-  const done = watchedCount(show);
-  const pct = total ? Math.round(done / total * 100) : 0;
-  const et = episodeText(show);
-
-  box.innerHTML = `
-    <div class="d-hero ${show.backdrop ? '' : 'no-img'}"
-         ${show.backdrop ? `style="background-image:url('${show.backdrop}')"` : ''}></div>
-    <div class="d-head">
-      <div class="d-title">${esc(show.name)}</div>
-      <div class="d-meta">
-        <span class="el-tag" style="color:var(--${el})">${STATUS_LABEL[show.status]}</span>
-        <span>${done} / ${total} episodes</span>
-        ${show.hasNew ? '<span class="badge-new" style="position:static">NEW EPISODES</span>' : ''}
-      </div>
-    </div>
-    <div class="d-body">
-      ${show.overview ? `<p class="d-overview">${esc(show.overview)}</p>` : ''}
-      <div class="d-progress"><i style="width:${pct}%;background:linear-gradient(90deg,var(--${el}),var(--${el}-glow))"></i></div>
-      <div class="d-count">${esc(et.line)}${et.name ? ' · ' + esc(et.name) : ''}</div>
-      <div class="stars" title="Your rating"></div>
-      <div class="d-actions"></div>
-      <div class="d-section-title">Episodes</div>
-      <div class="d-seasons"></div>
-    </div>`;
-
-  // rating stars
-  const stars = box.querySelector('.stars');
-  for (let i = 1; i <= 5; i++) {
-    const s = document.createElement('span');
-    s.textContent = '★';
-    if (!show.rating || i > show.rating) s.className = 'off';
-    s.onclick = () => setRating(show, i);
-    stars.appendChild(s);
+  const box = $('detail-content'), activeKey = box.contains(document.activeElement) ? document.activeElement.dataset.focus : null;
+  const openSeasons = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.season)), priorShowId = box.dataset.showId; box.dataset.showId = show.tmdbId;
+  const total = totalEpisodes(show), done = watchedCount(show), pct = total ? Math.round(done / total * 100) : 0, next = upNext(show), el = ELEMENT[show.status];
+  box.innerHTML = `<div class="d-hero no-img"></div>
+    <div class="d-head"><h2 class="d-title" id="detail-title">${esc(show.name)}</h2><div class="d-meta"><span class="el-tag" style="color:var(--${el})">${STATUS_LABEL[show.status]}</span><span>${done} / ${total} episodes</span>${show.hasNew ? '<span class="badge-new">New episodes available</span>' : ''}</div></div>
+    <div class="d-body">${show.overview ? `<p class="d-overview">${esc(show.overview)}</p>` : ''}
+    <div class="d-progress" role="progressbar" aria-label="Episodes watched" aria-valuemin="0" aria-valuemax="${total || 1}" aria-valuenow="${done}"><i style="width:${pct}%;background:var(--${el})"></i></div>
+    <p class="d-count">${esc(episodeText(show).line)} · ${esc(episodeText(show).name)}</p>
+    <fieldset class="rating-field"><legend>Your rating</legend><div class="stars"></div><p class="hint">Choose the selected rating again to clear it.</p></fieldset>
+    <div class="d-actions"></div><h3 class="d-section-title">Episodes</h3><p class="episode-help" id="episode-help">Track where you have watched through. Choosing an episode marks it and every earlier episode watched. Choose an earlier episode to move your progress back.</p><div class="d-seasons"></div></div>`;
+  const backdrop = imageUrl(show.backdrop);
+  if (backdrop) { box.querySelector('.d-hero').style.backgroundImage = `url("${backdrop.replace(/"/g, '%22')}")`; box.querySelector('.d-hero').classList.remove('no-img'); }
+  for (let n = 1; n <= 5; n++) {
+    const button = mkBtn('★', (!show.rating || n > show.rating) ? 'rating-star off' : 'rating-star'); button.setAttribute('aria-label', `${n} ${n === 1 ? 'star' : 'stars'}`); button.setAttribute('aria-pressed', String(show.rating === n));
+    button.dataset.focus = 'rating-' + n; button.onclick = () => setRating(show, n); box.querySelector('.stars').append(button);
   }
-
-  // actions
   const actions = box.querySelector('.d-actions');
-  if (upNext(show)) {
-    const nb = mkBtn('▶ Watched This', 'btn btn-' + el);
-    nb.onclick = () => { bendPress(nb); markWatched(show); };
-    actions.appendChild(nb);
-  }
-  if (done > 0) {
-    const back = mkBtn('◀ Step back', 'mini');
-    back.onclick = () => stepBack(show);
-    actions.appendChild(back);
-  }
-  Object.keys(STATUS_LABEL).filter(s => s !== show.status).forEach(s => {
-    const b = mkBtn(STATUS_LABEL[s], 'mini');
-    b.title = 'Move to ' + STATUS_LABEL[s];
-    b.onclick = () => moveStatus(show, s);
-    actions.appendChild(b);
-  });
-  const refresh = mkBtn(show.hasNew ? '⟳ Fetch new episodes' : '⟳ Refresh data', 'mini');
-  refresh.onclick = () => refreshShowData(show);
-  actions.appendChild(refresh);
-  const del = mkBtn('Remove', 'btn btn-danger');
-  del.onclick = () => {
-    if (del.dataset.armed) { removeShow(show); return; }
-    del.dataset.armed = '1';
-    del.textContent = 'Really remove?';
-    setTimeout(() => { delete del.dataset.armed; del.textContent = 'Remove'; }, 3000);
-  };
-  actions.appendChild(del);
-
-  // seasons accordion
+  if (next) { const watch = mkBtn(`Mark S${next.season} E${next.ep} watched`, 'btn btn-primary'); watch.dataset.focus = 'watch'; watch.onclick = () => markWatched(show); actions.append(watch); }
+  if (done > 0) { const back = mkBtn('Step back one episode'); back.dataset.focus = 'back'; back.onclick = () => stepBack(show); actions.append(back); }
+  const label = document.createElement('label'); label.className = 'd-status-label'; label.textContent = 'Shelf';
+  const select = document.createElement('select'); select.className = 'd-status'; select.setAttribute('aria-label', 'Move show to shelf'); select.dataset.focus = 'status';
+  for (const status of Object.keys(ELEMENT)) { const option = document.createElement('option'); option.value = status; option.textContent = STATUS_LABEL[status] + ' · ' + STATUS_DESCRIPTION[status]; option.selected = status === show.status; select.append(option); }
+  select.onchange = () => moveStatus(show, select.value); label.append(select); actions.append(label);
+  const refresh = mkBtn(refreshing.has(show.tmdbId) ? 'Refreshing…' : show.hasNew ? 'Fetch new episodes' : 'Refresh show data'); refresh.dataset.focus = 'refresh'; refresh.disabled = refreshing.has(show.tmdbId); refresh.onclick = () => refreshShowData(show); actions.append(refresh);
+  const remove = mkBtn('Remove show', 'btn btn-danger'); remove.dataset.focus = 'remove'; remove.onclick = () => requestRemoval(show); actions.append(remove);
   const seasonsBox = box.querySelector('.d-seasons');
-  show.seasons.forEach(s => {
-    const det = document.createElement('details');
-    if (s.season === show.currentSeason) det.open = true;
-    const watchedInSeason = s.season < show.currentSeason ? s.episodes.length
-      : (s.season === show.currentSeason ? show.currentEpisode : 0);
-    det.innerHTML = `<summary>Season ${s.season}
-      <span class="s-count">${watchedInSeason} / ${s.episodes.length}</span></summary>`;
-    const list = document.createElement('div');
-    list.className = 'ep-list';
-    s.episodes.forEach(e => {
-      const watched = s.season < show.currentSeason ||
-        (s.season === show.currentSeason && e.ep <= show.currentEpisode);
-      const row = document.createElement('div');
-      row.className = 'ep-row' + (watched ? ' watched' : '');
-      row.title = 'Mark watched through this episode';
-      row.innerHTML = `<span class="ep-check">✓</span><span class="ep-num">E${e.ep}</span>
-        <span class="ep-title">${esc(e.name || 'Episode ' + e.ep)}</span>`;
-      row.onclick = () => setEpisodeTo(show, s.season, e.ep);
-      list.appendChild(row);
+  show.seasons.forEach(season => {
+    const details = document.createElement('details'); details.dataset.season = season.season; details.open = priorShowId === String(show.tmdbId) ? openSeasons.has(String(season.season)) : season.season === show.currentSeason;
+    const watchedInSeason = season.episodes.filter(e => season.season < show.currentSeason || (season.season === show.currentSeason && e.ep <= show.currentEpisode)).length;
+    details.innerHTML = `<summary>Season ${season.season}<span class="s-count">${watchedInSeason} / ${season.episodes.length} watched</span></summary>`; details.querySelector('summary').dataset.focus = 'season-' + season.season;
+    const list = document.createElement('div'); list.className = 'ep-list';
+    season.episodes.forEach(episode => {
+      const watched = season.season < show.currentSeason || (season.season === show.currentSeason && episode.ep <= show.currentEpisode), row = mkBtn('', 'ep-row' + (watched ? ' watched' : ''));
+      row.dataset.focus = `episode-${season.season}-${episode.ep}`; row.setAttribute('aria-describedby', 'episode-help'); row.setAttribute('aria-label', `Mark watched through S${season.season} E${episode.ep}: ${episode.name || 'Episode ' + episode.ep}${watched ? '. Watched' : ''}`);
+      row.innerHTML = `<span class="ep-check" aria-hidden="true">${watched ? '✓' : '○'}</span><span class="ep-num">E${episode.ep}</span><span class="ep-title">${esc(episode.name || 'Episode ' + episode.ep)}</span><span class="ep-action">${watched ? 'Watched' : 'Watch through'}</span>`;
+      row.onclick = () => setEpisodeTo(show, season.season, episode.ep); list.append(row);
     });
-    det.appendChild(list);
-    seasonsBox.appendChild(det);
+    details.append(list); seasonsBox.append(details);
   });
+  if (!show.seasons.length) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No episodes have been listed yet. Use Refresh show data to check again.'; seasonsBox.append(p); }
+  if (activeKey) { const replacement = [...box.querySelectorAll('[data-focus]')].find(el => el.dataset.focus === activeKey); (replacement || $('btn-close-detail')).focus({ preventScroll: true }); }
 }
-function mkBtn(label, cls) {
-  const b = document.createElement('button');
-  b.className = cls; b.textContent = label;
-  return b;
-}
-
-/* ---------- stats ---------- */
 function openStats() {
-  const box = document.getElementById('stats-content');
-  const shows = state.shows;
-  const epsWatched = shows.reduce((t, s) => t + watchedCount(s), 0);
-  const hours = Math.round(shows.reduce((t, s) => t + watchedCount(s) * (s.runtime || 40), 0) / 60);
-  const mastered = shows.filter(s => s.status === 'completed').length;
-  const rated = shows.filter(s => s.rating);
-  const avgRating = rated.length
-    ? (rated.reduce((t, s) => t + s.rating, 0) / rated.length).toFixed(1) : '—';
-
-  const counts = {};
-  for (const st of Object.keys(ELEMENT)) counts[st] = shows.filter(s => s.status === st).length;
-  const max = Math.max(1, ...Object.values(counts));
-
-  box.innerHTML = `
-    <div class="stat-grid">
-      <div class="stat"><b>${epsWatched.toLocaleString()}</b><span>episodes watched</span></div>
-      <div class="stat"><b>${hours.toLocaleString()}</b><span>hours in the library</span></div>
-      <div class="stat"><b>${mastered}</b><span>shows mastered</span></div>
-      <div class="stat"><b>${avgRating}</b><span>average rating</span></div>
-    </div>
-    <div class="stat-bars">
-      ${Object.keys(ELEMENT).map(st => `
-        <div class="stat-bar-row">
-          <span class="sb-label" style="color:var(--${ELEMENT[st]})">
-            <svg class="insignia"><use href="#sym-${ELEMENT[st]}"/></svg>${STATUS_LABEL[st]}</span>
-          <span class="sb-track"><i style="width:${Math.round(counts[st] / max * 100)}%;
-            background:linear-gradient(90deg,var(--${ELEMENT[st]}),var(--${ELEMENT[st]}-glow))"></i></span>
-          <span class="sb-num">${counts[st]}</span>
-        </div>`).join('')}
-    </div>`;
-  document.getElementById('stats').classList.remove('hidden');
+  const shows = state.shows, count = shows.reduce((sum, s) => sum + watchedCount(s), 0), hours = Math.round(shows.reduce((sum, s) => sum + watchedCount(s) * (s.runtime || 40), 0) / 60);
+  const rated = shows.filter(s => s.rating), average = rated.length ? (rated.reduce((sum, s) => sum + s.rating, 0) / rated.length).toFixed(1) : '—';
+  const counts = Object.fromEntries(Object.keys(ELEMENT).map(status => [status, shows.filter(s => s.status === status).length])), max = Math.max(1, ...Object.values(counts));
+  $('stats-content').innerHTML = `<div class="stat-grid"><div class="stat"><b>${count.toLocaleString()}</b><span>episodes watched</span></div><div class="stat"><b>${hours.toLocaleString()}</b><span>estimated hours watched</span></div><div class="stat"><b>${counts.completed}</b><span>completed shows</span></div><div class="stat"><b>${average}</b><span>average rating out of 5</span></div></div><p class="hint">Watch time uses each show’s listed average runtime, or 40 minutes when no runtime is available.</p><div class="stat-bars">${Object.keys(ELEMENT).map(status => `<div class="stat-bar-row"><span class="sb-label">${STATUS_LABEL[status]}</span><span class="sb-track" aria-hidden="true"><i style="width:${Math.round(counts[status] / max * 100)}%;background:var(--${ELEMENT[status]})"></i></span><span class="sb-num">${counts[status]}</span></div>`).join('')}</div>`;
+  openDialog($('stats'));
 }
+function toast(message, error = false) { const item = document.createElement('div'); item.className = 'toast' + (error ? ' err' : ''); item.textContent = message; $('toasts').append(item); setTimeout(() => item.remove(), error ? 7000 : 4500); }
 
-/* ---------- toasts ---------- */
-function toast(msg, err = false) {
-  const holder = document.getElementById('toasts');
-  const t = document.createElement('div');
-  t.className = 'toast' + (err ? ' err' : '');
-  t.textContent = msg;
-  holder.appendChild(t);
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, 3400);
+/* Scene module owns decorative work and its pause preference. */
+function bgTheme() { return readLocal(BG_KEY) === 'backdrops' ? 'backdrops' : 'aurora'; }
+function applyBg(theme) { if (!writeLocal(BG_KEY, theme)) return; window.LibraryScene?.setMode(theme); document.querySelectorAll('input[name="bg"]').forEach(input => { input.checked = input.value === theme; }); }
+function refreshBackdropPool() { window.LibraryScene?.setShows(state.shows); }
+
+/* Native search result buttons, abortable requests and IME-safe debounce. */
+let searchTimer = null, searchController = null, searchVersion = 0, composing = false;
+function updateSearchClear() {
+  const button = $('btn-clear-search');
+  if (button) { button.classList.remove('hidden'); button.hidden = !$('search').value; }
 }
-
-/* ---------- background engine ---------- */
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-let spiritsRAF = null, bdTimer = null, bdIndex = 0, bdPool = [], bdFlip = false;
-
-function bgTheme() { return localStorage.getItem(BG_KEY) || 'aurora'; }
-
-function applyBg(theme) {
-  localStorage.setItem(BG_KEY, theme);
-  const useBackdrops = theme === 'backdrops' && bdPool.length > 0;
-  document.body.classList.toggle('bg-backdrops', useBackdrops);
-  document.getElementById('bg-aurora').classList.toggle('hidden', useBackdrops);
-  document.getElementById('bg-backdrops').classList.toggle('hidden', !useBackdrops);
-  if (useBackdrops) { stopSpirits(); stopParade(); startBackdrops(); }
-  else { stopBackdrops(); startSpirits(); startParade(); }
-  document.querySelectorAll('input[name="bg"]').forEach(r => { r.checked = r.value === theme; });
-}
-function refreshBackdropPool() {
-  bdPool = [...new Set(state.shows.map(s => s.backdrop).filter(Boolean))];
-  // reapply in case the pool just became (non)empty while in backdrop mode
-  if (bgTheme() === 'backdrops') applyBg('backdrops');
-}
-
-/* spirit-light particles over the aurora */
-function startSpirits() {
-  const canvas = document.getElementById('spirits');
-  if (spiritsRAF || reducedMotion || !canvas) return;
-  const ctx = canvas.getContext('2d');
-  let w, h;
-  const size = () => { w = canvas.width = innerWidth; h = canvas.height = innerHeight; };
-  size();
-  window.addEventListener('resize', size);
-  const P = Array.from({ length: 26 }, () => ({
-    x: Math.random(), y: Math.random(), r: 1 + Math.random() * 2.4,
-    v: 0.008 + Math.random() * 0.02, sway: Math.random() * Math.PI * 2,
-    hue: [168, 268, 38, 205][Math.floor(Math.random() * 4)]
-  }));
-  let last = performance.now();
-  const step = now => {
-    spiritsRAF = requestAnimationFrame(step);
-    if (document.hidden) { last = now; return; }
-    const dt = Math.min((now - last) / 1000, 0.1); last = now;
-    ctx.clearRect(0, 0, w, h);
-    for (const p of P) {
-      p.y -= p.v * dt; p.sway += dt * 0.5;
-      if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
-      const x = (p.x + Math.sin(p.sway) * 0.012) * w, y = p.y * h;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, p.r * 7);
-      g.addColorStop(0, `hsla(${p.hue}, 80%, 72%, 0.5)`);
-      g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(x, y, p.r * 7, 0, Math.PI * 2); ctx.fill();
-    }
-  };
-  spiritsRAF = requestAnimationFrame(step);
-}
-function stopSpirits() {
-  if (spiritsRAF) { cancelAnimationFrame(spiritsRAF); spiritsRAF = null; }
-}
-
-/* ---------- spirit parade: one creature act crosses the sky at a time ---------- */
-const PARADE_ACTS = [
-  { id: 'koi',     dur: [40, 54], y: [5, 42] },
-  { id: 'dragon',  dur: [48, 62], y: [8, 36] },
-  { id: 'moth',    dur: [30, 42], y: [10, 46] },
-  { id: 'jellies', dur: [42, 56], rise: true }
-];
-let paradeTimer = null, lastActId = null;
-
-function startParade() {
-  if (paradeTimer !== null || reducedMotion) return;
-  paradeTimer = setTimeout(runParadeAct, 3000 + Math.random() * 7000);
-}
-function stopParade() {
-  clearTimeout(paradeTimer); paradeTimer = null;
-  document.getElementById('spirit-stage').innerHTML = '';
-}
-function runParadeAct() { spawnAct(); }
-
-function spawnAct(forceId, progress) {
-  const stage = document.getElementById('spirit-stage');
-  const pool = PARADE_ACTS.filter(a => a.id !== lastActId);
-  const act = forceId
-    ? PARADE_ACTS.find(a => a.id === forceId)
-    : pool[Math.floor(Math.random() * pool.length)];
-  if (!act) return;
-  lastActId = act.id;
-
-  const node = document.getElementById('tpl-' + act.id).content.firstElementChild.cloneNode(true);
-  const dur = (act.dur[0] + Math.random() * (act.dur[1] - act.dur[0])) * 1000;
-  node.style.setProperty('--dur', dur + 'ms');
-  if (act.rise) {
-    node.style.left = (12 + Math.random() * 62) + '%';
-  } else {
-    node.style.top = (act.y[0] + Math.random() * (act.y[1] - act.y[0])) + '%';
-    if (Math.random() < 0.5) node.classList.add('rtl');
-  }
-  if (progress) node.style.animationDelay = (-dur * progress) + 'ms';
-
-  node.addEventListener('animationend', e => {
-    if (e.target !== node) return;
-    node.remove();
-    if (paradeTimer !== null)
-      paradeTimer = setTimeout(runParadeAct, 8000 + Math.random() * 14000);
-  });
-  stage.appendChild(node);
-}
-
-/* Ken Burns slideshow of the user's own show backdrops */
-function startBackdrops() {
-  if (bdTimer || !bdPool.length) return;
-  bdIndex = Math.floor(Math.random() * bdPool.length);
-  const show = () => {
-    const url = bdPool[bdIndex % bdPool.length];
-    bdIndex++;
-    const nextUrl = bdPool[bdIndex % bdPool.length];
-    const layerOn  = document.getElementById(bdFlip ? 'bd-a' : 'bd-b');
-    const layerOff = document.getElementById(bdFlip ? 'bd-b' : 'bd-a');
-    bdFlip = !bdFlip;
-    const img = new Image();
-    img.onload = () => {
-      layerOn.style.backgroundImage = `url('${url}')`;
-      layerOn.classList.remove('on'); void layerOn.offsetWidth; // restart ken burns
-      layerOn.classList.add('on');
-      layerOff.classList.remove('on');
-      const pre = new Image(); pre.src = nextUrl; // preload the next slide
-    };
-    img.src = url;
-  };
-  show();
-  bdTimer = setInterval(show, 20000);
-}
-function stopBackdrops() {
-  if (bdTimer) { clearInterval(bdTimer); bdTimer = null; }
-  document.querySelectorAll('.bd-layer').forEach(l => l.classList.remove('on'));
-}
-
-/* ---------- search UI ---------- */
-let searchTimer = null;
+function hideSearch() { $('results').classList.add('hidden'); $('search').setAttribute('aria-expanded', 'false'); }
+function invalidateSearch() { clearTimeout(searchTimer); searchController?.abort(); searchVersion++; }
 function initSearch() {
-  const input = document.getElementById('search');
-  const box = document.getElementById('results');
-  input.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    const q = input.value.trim();
-    if (q.length < 2) { box.classList.add('hidden'); return; }
-    searchTimer = setTimeout(() => runSearch(q), 380);
-  });
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.search-wrap')) box.classList.add('hidden');
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === '/' && !e.target.closest('input, textarea')) { e.preventDefault(); input.focus(); }
-    if (e.key === 'Escape') {
-      box.classList.add('hidden');
-      closeDetail();
-      document.getElementById('stats').classList.add('hidden');
-      document.getElementById('settings').classList.add('hidden');
-    }
-  });
-}
-async function runSearch(q) {
-  const box = document.getElementById('results');
-  box.classList.remove('hidden');
-  box.innerHTML = '<div class="empty">Consulting the archives…</div>';
-  try {
-    const results = await tmdbSearch(q);
-    if (!results.length) { box.innerHTML = '<div class="empty">No shows found.</div>'; return; }
-    box.innerHTML = '';
-    results.slice(0, 8).forEach(r => {
-      const row = document.createElement('div');
-      row.className = 'result';
-      const year = r.first_air_date ? r.first_air_date.slice(0, 4) : '—';
-      row.innerHTML = `
-        ${r.poster_path ? `<img src="${IMG_SM + r.poster_path}" alt="">` : '<img alt="">'}
-        <div><div class="r-name">${esc(r.name)}</div><div class="r-year">${year}</div></div>`;
-      row.onclick = () => {
-        box.classList.add('hidden');
-        document.getElementById('search').value = '';
-        addShow(r.id);
-      };
-      box.appendChild(row);
-    });
-  } catch (e) {
-    box.innerHTML = '<div class="empty">Search failed — check your TMDB key in Settings.</div>';
+  const input = $('search'), box = $('results');
+  function changed() {
+    invalidateSearch(); updateSearchClear(); const query = input.value.trim();
+    if (query.length < 2 || composing) { hideSearch(); return; }
+    searchTimer = setTimeout(() => runSearch(query), 300);
   }
-}
-
-/* ---------- setup & settings ---------- */
-function showSetup() { document.getElementById('setup').classList.remove('hidden'); }
-function hideSetup() { document.getElementById('setup').classList.add('hidden'); }
-
-function initSetup() {
-  document.getElementById('btn-setup').onclick = async () => {
-    const msg = document.getElementById('setup-msg');
-    const tmdb = document.getElementById('in-tmdb').value.trim();
-    const token = document.getElementById('in-token').value.trim();
-    const gist = document.getElementById('in-gist').value.trim();
-    if (!tmdb) { msg.className = 'msg err'; msg.textContent = 'A TMDB key is required.'; return; }
-    creds.tmdb = tmdb; creds.token = token; creds.gist = gist;
-    msg.className = 'msg'; msg.textContent = 'Opening the library…';
-    try {
-      if (token && gist) {
-        const remote = await gistPull();
-        if (remote) state = remote;
-      } else if (token && !gist) {
-        creds.gist = await gistCreate();
-      }
-      saveCreds(); saveState(false); hideSetup();
-      setSync(creds.gist ? 'ok' : 'local');
-      render(); refreshBackdropPool();
-      migrate().then(checkNewEpisodes);
-    } catch (e) {
-      msg.className = 'msg err'; msg.textContent = e.message;
-    }
-  };
-}
-
-function initSettings() {
-  const panel = document.getElementById('settings');
-  document.getElementById('btn-settings').onclick = () => {
-    document.getElementById('set-gist').value = creds.gist || '(none — add a token to enable sync)';
-    document.getElementById('set-tmdb').value = creds.tmdb;
-    document.getElementById('set-token').value = creds.token;
-    document.getElementById('settings-msg').textContent = '';
-    document.querySelectorAll('input[name="bg"]').forEach(r => { r.checked = r.value === bgTheme(); });
-    panel.classList.remove('hidden');
-  };
-  document.getElementById('btn-close-settings').onclick = () => panel.classList.add('hidden');
-  panel.addEventListener('click', e => { if (e.target === panel) panel.classList.add('hidden'); });
-
-  document.querySelectorAll('input[name="bg"]').forEach(r => {
-    r.addEventListener('change', () => {
-      applyBg(r.value);
-      if (r.value === 'backdrops' && !bdPool.length)
-        toast('No backdrops yet — the aurora stays until your shows load some.');
-    });
+  input.addEventListener('input', changed);
+  input.addEventListener('compositionstart', () => { composing = true; invalidateSearch(); });
+  input.addEventListener('compositionend', () => { composing = false; changed(); });
+  input.addEventListener('focus', () => { if (input.value.trim().length >= 2 && box.childElementCount) { box.classList.remove('hidden'); input.setAttribute('aria-expanded', 'true'); } });
+  input.addEventListener('keydown', event => {
+    if (event.isComposing || composing) return;
+    if (event.key === 'ArrowDown' && !box.classList.contains('hidden')) { event.preventDefault(); box.querySelector('button:not([disabled])')?.focus(); }
+    if (event.key === 'Escape') { invalidateSearch(); hideSearch(); event.preventDefault(); }
   });
+  box.addEventListener('keydown', event => {
+    const buttons = [...box.querySelectorAll('button:not([disabled])')], current = buttons.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const step = event.key === 'ArrowDown' ? 1 : -1; if (current + step < 0) input.focus(); else buttons[Math.min(current + step, buttons.length - 1)]?.focus(); }
+    if (event.key === 'Escape') { invalidateSearch(); hideSearch(); input.focus(); }
+  });
+  $('btn-clear-search').onclick = () => { invalidateSearch(); input.value = ''; hideSearch(); updateSearchClear(); input.focus(); };
+  document.addEventListener('click', event => { if (!event.target.closest('.search-wrap')) hideSearch(); });
+  document.addEventListener('keydown', event => {
+    if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !document.querySelector('dialog[open]') && !event.target.closest('input, textarea, select, [contenteditable="true"]')) { event.preventDefault(); input.focus(); }
+  });
+  updateSearchClear();
+}
+async function runSearch(query) {
+  searchController?.abort(); searchController = new AbortController(); const version = ++searchVersion;
+  const box = $('results'); box.classList.remove('hidden'); $('search').setAttribute('aria-expanded', 'true'); box.setAttribute('aria-busy', 'true'); box.innerHTML = '<p class="empty" role="status">Finding shows…</p>';
+  try {
+    if (!creds.tmdb) throw new ServiceError('TMDB', 401);
+    const results = await tmdbSearch(query, searchController.signal);
+    if (version !== searchVersion || query !== $('search').value.trim()) return;
+    box.replaceChildren();
+    if (!results.length) { box.innerHTML = '<p class="empty" role="status">No shows found. Try another title or spelling.</p>'; return; }
+    results.slice(0, 8).forEach(result => {
+      const row = document.createElement('div'); row.className = 'result'; const year = result.first_air_date ? result.first_air_date.slice(0, 4) : 'Year unavailable';
+      row.innerHTML = `${result.poster_path ? `<img src="${esc(IMG_SM + result.poster_path)}" alt="" loading="lazy">` : '<span class="r-poster-fallback" aria-hidden="true">TV</span>'}<div class="r-copy"><div class="r-name">${esc(result.name)}</div><div class="r-year">${esc(year)}</div></div>`;
+      const existing = state.shows.find(show => show.tmdbId === result.id), button = mkBtn(existing ? 'Already in library' : adding.has(result.id) ? 'Adding…' : 'Add', 'r-action btn btn-secondary');
+      button.disabled = adding.has(result.id); button.setAttribute('aria-label', existing ? `Open ${result.name}, already in library` : `Add ${result.name} to library`);
+      button.onclick = () => existing ? openDetail(existing) : addShow(result.id, button); row.append(button); box.append(row);
+      const img = row.querySelector('img'); if (img) img.onerror = () => { img.hidden = true; row.classList.add('missing-poster'); };
+    });
+  } catch (error) {
+    if (version !== searchVersion || error.name === 'AbortError') return;
+    box.replaceChildren(); const message = document.createElement('p'); message.className = 'empty search-error'; message.setAttribute('role', 'alert'); message.textContent = errorMessage(error); box.append(message);
+    if (error instanceof ServiceError && [401, 403].includes(error.status)) { const button = mkBtn('Open settings'); button.onclick = openSettings; box.append(button); }
+    else { const button = mkBtn('Try again'); button.onclick = () => runSearch($('search').value.trim()); box.append(button); }
+  } finally { if (version === searchVersion) box.removeAttribute('aria-busy'); }
+}
 
-  document.getElementById('btn-save-settings').onclick = async () => {
-    const msg = document.getElementById('settings-msg');
-    creds.tmdb = document.getElementById('set-tmdb').value.trim();
-    creds.token = document.getElementById('set-token').value.trim();
+/* Setup requires only TMDB. Gist sync is optional. */
+function fieldError(id, message = '') {
+  const field = $(id), error = $(id + '-error');
+  if (field) {
+    field.setAttribute('aria-invalid', String(Boolean(message)));
+    if (error) field.setAttribute('aria-describedby', [field.getAttribute('aria-describedby') || '', error.id].join(' ').split(/\s+/).filter((value, index, list) => value && list.indexOf(value) === index).join(' '));
+  }
+  if (error) { error.textContent = message; error.hidden = !message; }
+}
+function validateFields(prefix, includeGist = false) {
+  const candidate = { tmdb: $(prefix + '-tmdb').value.trim(), token: $(prefix + '-token').value.trim(), gist: includeGist ? $(prefix + '-gist').value.trim() : creds.gist };
+  ['tmdb', 'token', 'gist'].forEach(key => fieldError(prefix + '-' + key)); let first = null;
+  if (!candidate.tmdb) { fieldError(prefix + '-tmdb', 'Enter your TMDB v3 API key.'); first = $(prefix + '-tmdb'); }
+  if (includeGist && candidate.gist && !candidate.token) { fieldError(prefix + '-token', 'Add a GitHub token to connect this existing library, or clear the Library ID to use this device only.'); first ||= $(prefix + '-token'); }
+  if (includeGist && candidate.gist && !/^[a-f\d]+$/i.test(candidate.gist)) { fieldError(prefix + '-gist', 'Use the Library ID only, not the full Gist URL.'); first ||= $(prefix + '-gist'); }
+  if (first) { if (first.id !== prefix + '-tmdb') $('setup-sync')?.setAttribute('open', ''); first.focus(); return null; }
+  return candidate;
+}
+function setMessage(id, text, error = false) { const el = $(id); el.className = 'msg' + (error ? ' err' : ''); el.textContent = text; }
+function markServiceField(prefix, error) {
+  if (!(error instanceof ServiceError)) return;
+  const id = error.service === 'TMDB' ? prefix + '-tmdb' : error.status === 404 ? prefix + '-gist' : prefix + '-token';
+  fieldError(id, errorMessage(error)); $(id)?.closest('details')?.setAttribute('open', ''); $(id)?.focus();
+}
+function showSetup() { openDialog($('setup')); }
+function hideSetup() { closeDialog($('setup')); }
+function initSetup() {
+  let busy = false;
+  $('setup-form').addEventListener('submit', async event => {
+    event.preventDefault(); if (busy) return; const candidate = validateFields('in', true); if (!candidate) return;
+    busy = true; $('btn-setup').disabled = true; setMessage('setup-msg', 'Opening your library…'); const beforeState = state;
     try {
-      if (creds.token && !creds.gist) {
-        creds.gist = await gistCreate();
-        document.getElementById('set-gist').value = creds.gist;
+      let remote = null;
+      if (candidate.token && candidate.gist) remote = await gistPull(candidate); else if (candidate.token) candidate.gist = await gistCreate(candidate);
+      if (!saveCreds(candidate)) throw new Error('Your browser could not save the keys. Resolve the storage message and retry.');
+      if (remote) { if (!replaceFromRemote(remote)) throw new Error('Your library could not be saved on this device.'); }
+      else if (!saveState(false)) throw new Error('Your library could not be saved on this device.');
+      hideSetup(); setSync(candidate.token && candidate.gist ? 'ok' : 'local'); render(); refreshBackdropPool(); migrate().then(checkNewEpisodes); $('search').focus();
+    } catch (error) { state = beforeState; setMessage('setup-msg', errorMessage(error), true); markServiceField('in', error); }
+    finally { busy = false; $('btn-setup').disabled = false; }
+  });
+}
+function openSettings() {
+  $('set-gist').value = creds.gist || ''; $('set-tmdb').value = creds.tmdb; $('set-token').value = creds.token;
+  $('settings').querySelectorAll('[data-reveal]').forEach(button => { $(button.dataset.reveal).type = 'password'; button.textContent = 'Show'; button.setAttribute('aria-pressed', 'false'); button.setAttribute('aria-label', 'Show ' + (button.dataset.reveal.includes('tmdb') ? 'TMDB API key' : 'GitHub token')); });
+  ['tmdb', 'token', 'gist'].forEach(key => fieldError('set-' + key)); setMessage('settings-msg', ''); $('btn-copy-gist').disabled = !creds.gist; $('btn-pull').disabled = !creds.token || !creds.gist;
+  document.querySelectorAll('input[name="bg"]').forEach(input => { input.checked = input.value === bgTheme(); }); hideSearch(); openDialog($('settings'));
+}
+function initSettings() {
+  let busy = false; $('btn-settings').onclick = openSettings; $('sync-status').onclick = openSettings;
+  document.querySelectorAll('[data-reveal]').forEach(button => { button.onclick = () => {
+    const field = $(button.dataset.reveal); if (!field) return; const showing = field.type === 'password'; field.type = showing ? 'text' : 'password'; button.textContent = showing ? 'Hide' : 'Show'; button.setAttribute('aria-pressed', String(showing));
+    button.setAttribute('aria-label', (showing ? 'Hide ' : 'Show ') + (field.id.includes('tmdb') ? 'TMDB API key' : 'GitHub token'));
+  }; });
+  document.querySelectorAll('input[name="bg"]').forEach(input => input.addEventListener('change', () => {
+    if (!input.checked) return; applyBg(input.value);
+    if (input.value === 'backdrops' && !state.shows.some(show => show.backdrop)) toast('Your living library stays visible until your shows have backdrop images.');
+  }));
+  $('settings-form').addEventListener('submit', async event => {
+    event.preventDefault(); if (busy) return; const candidate = validateFields('set'); if (!candidate) return;
+    busy = true; $('btn-save-settings').disabled = true; $('btn-pull').disabled = true; setMessage('settings-msg', 'Saving settings…');
+    try {
+      if (candidate.token && !candidate.gist) candidate.gist = await gistCreate(candidate);
+      if (!saveCreds(candidate)) throw new Error('Settings were not saved. Resolve the browser storage message and retry.');
+      $('set-gist').value = creds.gist || ''; $('btn-copy-gist').disabled = !creds.gist; setMessage('settings-msg', 'Settings saved on this device.');
+      if (creds.token && creds.gist) scheduleSync(); else setSync('local');
+    } catch (error) { setMessage('settings-msg', errorMessage(error), true); markServiceField('set', error); }
+    finally { busy = false; $('btn-save-settings').disabled = false; $('btn-pull').disabled = !creds.token || !creds.gist; }
+  });
+  $('btn-pull').onclick = async () => {
+    if (busy || !creds.token || !creds.gist) return;
+    if (inFlightPushes) { setMessage('settings-msg', 'Your latest changes are still syncing. Wait for “Synced”, then try again.'); return; }
+    busy = true; $('btn-pull').disabled = true; $('btn-save-settings').disabled = true; setMessage('settings-msg', 'Getting your synced library…'); setSync('busy');
+    try {
+      // Finish a queued edit first so an immediate manual pull cannot discard it.
+      if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; await gistPush(); }
+      if (syncTimer || inFlightPushes) { setMessage('settings-msg', 'New changes are still syncing. Your local library was kept; try again once it is synced.'); return; }
+      const revision = localRevision, remote = await gistPull();
+      if (!applyPulledState(remote, revision)) {
+        setMessage('settings-msg', storageFailed ? 'Could not save the synced library on this device.' : 'Your library changed while syncing. Your latest local changes were kept. Try Sync now again once syncing finishes.', storageFailed);
+        return;
       }
-      saveCreds();
-      msg.className = 'msg ok'; msg.textContent = 'Saved.';
-      setSync(creds.gist ? 'ok' : 'local');
-    } catch (e) {
-      msg.className = 'msg err'; msg.textContent = e.message;
-    }
+      setMessage('settings-msg', 'Your synced library is saved on this device.'); setSync('ok');
+    } catch (error) { setMessage('settings-msg', errorMessage(error), true); setSync('err'); }
+    finally { busy = false; $('btn-pull').disabled = !creds.token || !creds.gist; $('btn-save-settings').disabled = false; }
   };
-  document.getElementById('btn-pull').onclick = async () => {
-    const msg = document.getElementById('settings-msg');
-    try {
-      const remote = await gistPull();
-      if (remote) { state = remote; saveState(false); render(); refreshBackdropPool(); }
-      msg.className = 'msg ok'; msg.textContent = 'Synced from the cloud.';
-    } catch (e) {
-      msg.className = 'msg err'; msg.textContent = e.message;
-    }
+  $('btn-copy-gist').onclick = async () => {
+    if (!creds.gist) return;
+    try { await navigator.clipboard.writeText(creds.gist); setMessage('settings-msg', 'Library ID copied.'); }
+    catch (_) { $('set-gist').focus(); $('set-gist').select(); setMessage('settings-msg', 'Copy was unavailable. Your Library ID is selected; press Ctrl+C or use Copy.'); }
   };
 }
 
-function initModals() {
-  const detail = document.getElementById('detail');
-  document.getElementById('btn-close-detail').onclick = closeDetail;
-  detail.addEventListener('click', e => { if (e.target === detail) closeDetail(); });
-
-  const stats = document.getElementById('stats');
-  document.getElementById('btn-stats').onclick = openStats;
-  document.getElementById('btn-close-stats').onclick = () => stats.classList.add('hidden');
-  stats.addEventListener('click', e => { if (e.target === stats) stats.classList.add('hidden'); });
-}
-
-/* ---------- boot ---------- */
 async function boot() {
-  loadCreds(); loadState();
-  initSearch(); initSetup(); initSettings(); initModals(); initRows();
-  render(); refreshBackdropPool();
-  applyBg(bgTheme());
-
-  if (!creds.tmdb) { showSetup(); }
-  else { setSync(creds.gist ? 'ok' : 'local'); }
-
-  // pull latest on load if synced, then backfill new fields + check for new episodes
+  window.addEventListener('library-storage-error', storageError);
+  loadCreds(); loadState(); initSearch(); initModals(); initSetup(); initSettings(); initRows(); render(); window.LibraryScene?.init({ mode: bgTheme(), shows: state.shows });
+  if (!creds.tmdb) showSetup(); else setSync(creds.token && creds.gist ? 'ok' : 'local');
   if (creds.token && creds.gist) {
+    setSync('busy');
     try {
-      const remote = await gistPull();
-      if (remote) { state = remote; localStorage.setItem('wstl_state', JSON.stringify(state)); render(); refreshBackdropPool(); }
-      setSync('ok');
-    } catch (e) { setSync('err'); }
+      const revision = localRevision, remote = await gistPull();
+      if (remote && applyPulledState(remote, revision)) setSync('ok');
+      else if (!storageFailed) toast('Your library changed during sync. Your latest local changes were kept.');
+    } catch (_) { setSync('err'); }
   }
   if (creds.tmdb) migrate().then(checkNewEpisodes);
-
-  // refresh when the tab regains focus
+  let focusPull = false;
   window.addEventListener('focus', async () => {
-    if (!creds.token || !creds.gist) return;
+    if (!creds.token || !creds.gist || syncTimer || inFlightPushes || focusPull || document.querySelector('dialog[open]')) return; focusPull = true;
     try {
-      const remote = await gistPull();
-      if (remote) { state = remote; localStorage.setItem('wstl_state', JSON.stringify(state)); render(); refreshBackdropPool(); }
-      setSync('ok');
-    } catch (e) { setSync('err'); }
+      const revision = localRevision, remote = await gistPull();
+      if (remote && applyPulledState(remote, revision)) setSync('ok');
+      else if (!storageFailed) toast('Your library changed during sync. Your latest local changes were kept.');
+    } catch (_) { setSync('err'); } finally { focusPull = false; }
   });
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot();

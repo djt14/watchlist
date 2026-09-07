@@ -1,0 +1,11 @@
+{
+  "name": "wan-shi-tongs-library",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Static watchlist with an animated living-library scene",
+  "scripts": {
+    "start": "node tests/server.mjs",
+    "test": "node --test tests/app.test.cjs tests/app-state.test.mjs tests/sw.test.mjs tests/fixtures.test.mjs tests/server.test.mjs tests/library-scene.test.cjs tests/fonts.test.mjs"
+  },
+  "engines": { "node": ">=22" }
+}
